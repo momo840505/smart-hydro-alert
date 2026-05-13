@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Water Monitor</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-2: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+    header {
+      padding: 16px 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+      font-weight: 600;
+    }
+    .conn {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .conn .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .conn.ok .dot { background: var(--ok); }
+    .conn.bad .dot { background: var(--danger); }
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    select, input, button {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    button {
+      cursor: pointer;
+      background: var(--accent);
+      color: #0f172a;
+      border: none;
+      font-weight: 600;
+    }
+    button:hover { opacity: 0.9; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 0 0 12px 0;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .stat {
+      background: var(--panel-2);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .stat .label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat .value {
+      font-size: 18px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.online  { background: var(--ok); color: #052e16; }
+    .badge.offline { background: var(--muted); color: #0f172a; }
+    .badge.yes     { background: var(--accent); color: #0f172a; }
+    .badge.no      { background: var(--panel-2); color: var(--muted); }
+    .badge.low     { background: #fde047; color: #422006; }
+    .badge.medium  { background: var(--warn); color: #422006; }
+    .badge.high    { background: var(--danger); color: #450a0a; }
+    .alert-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-weight: 600;
+      display: none;
+    }
+    .alert-banner.show { display: block; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+      font-style: italic;
+    }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Smart Water Monitor</h1>
+    <span id="conn" class="conn"><span class="dot"></span><span id="connText">disconnected</span></span>
+  </header>
+
+  <main>
+    <div class="controls">
+      <label for="deviceSelect" class="muted">Device:</label>
+      <select id="deviceSelect"></select>
+      <input id="deviceInput" placeholder="or type device_id" />
+      <button id="loadBtn">Load</button>
+      <button id="refreshBtn">Refresh alerts</button>
+    </div>
+
+    <div id="alertBanner" class="alert-banner"></div>
+
+    <div class="card">
+      <h2>Live status</h2>
+      <div id="liveContent" class="empty">No device selected.</div>
+    </div>
+
+    <div class="card">
+      <h2>Recent alerts</h2>
+      <div id="alertsContent">
+        <div class="empty">Loading...</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const HOST = window.location.hostname || "localhost";
+    const BACKEND = `http://${HOST}:8000`;
+    const WS_BACKEND = `ws://${HOST}:8000`;
+
+    let currentDevice = null;
+    let ws = null;
+    let wsRetryTimer = null;
+    let alertPollTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function fmtAgo(epoch) {
+      if (!epoch) return "—";
+      const sec = Math.max(0, Math.floor(Date.now() / 1000) - epoch);
+      if (sec < 60) return `${sec}s ago`;
+      if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+      return `${Math.floor(sec / 3600)}h ago`;
+    }
+
+    function fmtTime(epoch) {
+      if (!epoch) return "—";
+      return new Date(epoch * 1000).toLocaleString();
+    }
+
+    function setConnState(state, text) {
+      const el = $("conn");
+      el.className = "conn " + (state || "");
+      $("connText").textContent = text;
+    }
+
+    async function loadDevices() {
+      try {
+        const r = await fetch(`${BACKEND}/api/devices`);
+        const devices = await r.json();
+        const sel = $("deviceSelect");
+        sel.innerHTML = "";
+        if (devices.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "(no devices yet)";
+          sel.appendChild(opt);
+        } else {
+          for (const d of devices) {
+            const opt = document.createElement("option");
+            opt.value = d.device_id;
+            opt.textContent = `${d.device_id}${d.location ? " — " + d.location : ""}`;
+            sel.appendChild(opt);
+          }
+        }
+      } catch (e) {
+        console.error("loadDevices failed", e);
+      }
+    }
+
+    async function loadLive(deviceId) {
+      try {
+        const r = await fetch(`${BACKEND}/api/devices/${encodeURIComponent(deviceId)}/live`);
+        if (r.status === 404) {
+          $("liveContent").innerHTML = `<div class="empty">Device <code>${deviceId}</code> not found. Run the simulator to create it.</div>`;
+          return;
+        }
+        const d = await r.json();
+        renderLive(d);
+      } catch (e) {
+        console.error("loadLive failed", e);
+        $("liveContent").innerHTML = `<div class="empty">Failed to load device state.</div>`;
+      }
+    }
+
+    function renderLive(d) {
+      const statusBadge = `<span class="badge ${d.status === "ONLINE" ? "online" : "offline"}">${d.status || "?"}</span>`;
+      const waterBadge = d.water_flow ? `<span class="badge yes">YES</span>` : `<span class="badge no">NO</span>`;
+      const humanBadge = d.human_present ? `<span class="badge yes">YES</span>` : `<span class="badge no">NO</span>`;
+      $("liveContent").innerHTML = `
+        <div class="status-grid">
+          <div class="stat"><div class="label">Device</div><div class="value">${d.device_id}</div></div>
+          <div class="stat"><div class="label">Location</div><div class="value">${d.location || "—"}</div></div>
+          <div class="stat"><div class="label">Status</div><div class="value">${statusBadge}</div></div>
+          <div class="stat"><div class="label">Water flow</div><div class="value">${waterBadge}</div></div>
+          <div class="stat"><div class="label">Human present</div><div class="value">${humanBadge}</div></div>
+          <div class="stat"><div class="label">Running</div><div class="value">${d.running_duration_sec ?? 0}s</div></div>
+          <div class="stat"><div class="label">Last seen</div><div class="value">${fmtAgo(d.last_seen)}</div></div>
+          <div class="stat"><div class="label">Uptime</div><div class="value">${d.uptime_sec ?? "—"}${d.uptime_sec ? "s" : ""}</div></div>
+        </div>
+      `;
+      if (d.has_active_alert) {
+        showAlertBanner(`Active alert on ${d.device_id} — water running with no human detected.`);
+      } else {
+        hideAlertBanner();
+      }
+    }
+
+    function applySensorUpdate(data) {
+      const liveEl = $("liveContent");
+      if (liveEl.querySelector(".empty")) {
+        loadLive(currentDevice);
+        return;
+      }
+      const stats = liveEl.querySelectorAll(".stat .value");
+      if (stats.length >= 6) {
+        stats[3].innerHTML = data.water_flow ? `<span class="badge yes">YES</span>` : `<span class="badge no">NO</span>`;
+        stats[4].innerHTML = data.human_present ? `<span class="badge yes">YES</span>` : `<span class="badge no">NO</span>`;
+        stats[5].textContent = `${data.running_duration_sec}s`;
+        stats[6].textContent = fmtAgo(data.timestamp);
+      }
+    }
+
+    function applyDeviceStatus(data) {
+      const liveEl = $("liveContent");
+      const stats = liveEl.querySelectorAll(".stat .value");
+      if (stats.length >= 3) {
+        stats[2].innerHTML = `<span class="badge ${data.status === "ONLINE" ? "online" : "offline"}">${data.status}</span>`;
+      }
+    }
+
+    function showAlertBanner(text) {
+      const el = $("alertBanner");
+      el.textContent = text;
+      el.classList.add("show");
+    }
+    function hideAlertBanner() {
+      $("alertBanner").classList.remove("show");
+    }
+
+    async function loadAlerts() {
+      try {
+        const r = await fetch(`${BACKEND}/api/alerts?limit=20`);
+        const alerts = await r.json();
+        renderAlerts(alerts);
+      } catch (e) {
+        console.error("loadAlerts failed", e);
+      }
+    }
+
+    function renderAlerts(alerts) {
+      const target = $("alertsContent");
+      if (!alerts || alerts.length === 0) {
+        target.innerHTML = `<div class="empty">No alerts yet.</div>`;
+        return;
+      }
+      const rows = alerts.map(a => `
+        <tr>
+          <td>${fmtTime(a.timestamp)}</td>
+          <td>${a.device_id}</td>
+          <td>${a.alert_type}</td>
+          <td><span class="badge ${a.strength.toLowerCase()}">${a.strength}</span></td>
+          <td>${a.duration_sec}s</td>
+          <td>${a.notified ? "✓" : "—"}</td>
+        </tr>
+      `).join("");
+      target.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th><th>Device</th><th>Type</th><th>Severity</th><th>Duration</th><th>Notified</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function connectWS(deviceId) {
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+        ws = null;
+      }
+      clearTimeout(wsRetryTimer);
+
+      setConnState("", "connecting...");
+      const sock = new WebSocket(`${WS_BACKEND}/ws/devices/${encodeURIComponent(deviceId)}`);
+      ws = sock;
+
+      sock.onopen = () => setConnState("ok", `live: ${deviceId}`);
+      sock.onclose = () => {
+        setConnState("bad", "disconnected, retrying...");
+        wsRetryTimer = setTimeout(() => {
+          if (currentDevice) connectWS(currentDevice);
+        }, 2000);
+      };
+      sock.onerror = () => setConnState("bad", "ws error");
+      sock.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch (_) { return; }
+        if (msg.event === "sensor_update") {
+          applySensorUpdate(msg.data);
+        } else if (msg.event === "alert_created") {
+          showAlertBanner(`ALERT: ${msg.data.device_id} — ${msg.data.alert_type} (${msg.data.strength}, ${msg.data.duration_sec}s)`);
+          loadAlerts();
+        } else if (msg.event === "device_status") {
+          applyDeviceStatus(msg.data);
+        }
+      };
+    }
+
+    function switchDevice(deviceId) {
+      if (!deviceId) return;
+      currentDevice = deviceId;
+      loadLive(deviceId);
+      connectWS(deviceId);
+    }
+
+    $("loadBtn").addEventListener("click", () => {
+      const typed = $("deviceInput").value.trim();
+      const picked = $("deviceSelect").value;
+      const id = typed || picked;
+      if (id) switchDevice(id);
+    });
+    $("deviceSelect").addEventListener("change", (e) => {
+      $("deviceInput").value = "";
+      switchDevice(e.target.value);
+    });
+    $("refreshBtn").addEventListener("click", loadAlerts);
+
+    async function init() {
+      await loadDevices();
+      const first = $("deviceSelect").value;
+      if (first) {
+        switchDevice(first);
+      } else {
+        switchDevice("device01");
+      }
+      loadAlerts();
+      alertPollTimer = setInterval(loadAlerts, 10000);
+      setInterval(loadDevices, 30000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

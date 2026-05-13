@@ -1,0 +1,48 @@
+# Conda / Python envs
+.conda/
+.venv/
+venv/
+env/
+
+# Build / cache
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Source control
+.git/
+.gitignore
+.github/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Tests (image doesn't need them)
+tests/
+
+# Docs
+*.md
+
+# Logs
+*.log
+logs/
+
+# Docker artefacts themselves
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker/
