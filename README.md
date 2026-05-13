@@ -5,9 +5,6 @@ from ESP32 devices, stores readings in MongoDB, detects abnormal water-usage eve
 (water flowing ≥ 5 min with no human present), and pushes real-time updates to a
 React dashboard via WebSocket.
 
-See [`architect.md`](architect.md), [`Data_pipe.md`](Data_pipe.md),
-[`schemas.md`](schemas.md), and [`project_detail.md`](project_detail.md) for the
-full system design.
 
 ---
 
@@ -65,12 +62,7 @@ full system design.
 ├── docker/
 │   └── mosquitto.conf                # MQTT broker config (anonymous, port 1883)
 │
-├── architect.md                      # System architecture design
-├── Data_pipe.md                      # End-to-end data pipeline reference
-├── project_detail.md                 # Original project brief
-├── schemas.md                        # ESP32 ↔ backend MQTT contract
 ├── README.md                         # This file
-│
 ├── Dockerfile                        # Backend + simulator image
 ├── docker-compose.yml                # Mongo + Mosquitto + Backend + Simulator
 ├── .dockerignore
