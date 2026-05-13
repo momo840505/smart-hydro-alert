@@ -385,3 +385,163 @@ black app tests
 - The duplicate-alert prevention uses `Device.active_alert_at` in MongoDB, so it survives backend restarts.
 - The MQTT subscriber reconnects with exponential backoff (1s → 30s cap).
 - For multi-instance deployments, the in-memory `WebSocketManager` would need a pub/sub backend (e.g. Redis); single-instance is fine for development.
+
+## React Frontend Dashboard
+
+This project includes a Vite + React dashboard for the Smart Water Monitoring and Alert System.
+
+The dashboard visualises live IoT data from the backend and shows whether the system has detected abnormal water usage. It is designed for the Group 4 demo and connects the ESP32/MQTT/backend pipeline to a clear web interface.
+
+### Dashboard Features
+
+The React dashboard displays:
+
+- backend connection status
+- selected device ID
+- live water flow status
+- live human presence status
+- current running duration
+- latest flow rate
+- active alert status
+- abnormal water usage alert history
+- system logic summary
+- demo scenario explanation
+- IoT architecture flow
+
+The dashboard also refreshes automatically every few seconds and includes a manual **Sync Dashboard** button.
+
+### Frontend Location
+
+The React frontend is located in:
+
+```text
+frontend-react/
+```
+
+Main frontend files:
+
+```text
+frontend-react/src/App.jsx
+frontend-react/src/App.css
+```
+
+### Backend API Used by the Dashboard
+
+The dashboard connects to the FastAPI backend using these endpoints:
+
+```text
+GET /health
+GET /api/devices/{device_id}/live
+GET /api/devices/{device_id}/history?limit=1
+GET /api/alerts?device_id={device_id}
+```
+
+For the current demo, the default device is:
+
+```text
+device01
+```
+
+### Run the Backend Services
+
+From the project root:
+
+```powershell
+docker compose up -d
+```
+
+Check running containers:
+
+```powershell
+docker compose ps
+```
+
+The main services should include:
+
+```text
+smartwater-mosquitto
+smartwater-mongo
+smartwater-backend
+```
+
+### Run the React Frontend
+
+From the project root:
+
+```powershell
+cd frontend-react
+npm install
+npm run dev
+```
+
+Then open the dashboard in the browser:
+
+```text
+http://localhost:5173
+```
+
+### Run Demo Simulator Scenarios
+
+From the project root, run simulator commands in a separate terminal.
+
+#### Leak / abnormal water usage scenario
+
+```powershell
+docker compose --profile tools run --rm simulator leak --device-id device01 --duration 310 --tick 0.1
+```
+
+This simulates water running while no human is detected. Once the running duration reaches 300 seconds, the backend records a `WATER_RUNNING_NO_HUMAN` alert.
+
+Expected dashboard result:
+
+```text
+Water Flow: YES
+Human Present: NO
+Running Duration: 300s or above
+Active Alert: YES
+Alert History: new WATER_RUNNING_NO_HUMAN event
+```
+
+#### Normal usage scenario
+
+```powershell
+docker compose --profile tools run --rm simulator normal --device-id device01 --duration 60 --tick 0.1
+```
+
+This is used to test normal system behaviour where the alert condition should not be triggered.
+
+#### Intermittent usage scenario
+
+```powershell
+docker compose --profile tools run --rm simulator intermittent --device-id device01 --duration 120 --tick 0.1
+```
+
+This is used to test changing sensor readings and confirm that short or interrupted usage does not create the same continuous abnormal usage alert.
+
+### Alert Rule
+
+The current alert rule is:
+
+```text
+water_flow = true
+human_present = false
+running_duration_sec >= 300
+```
+
+When this condition is met, the backend records an abnormal water usage alert.
+
+Current alert type:
+
+```text
+WATER_RUNNING_NO_HUMAN
+```
+
+### Notes for Demo
+
+The dashboard is connected to the backend API, not directly to MQTT. The data flow is:
+
+```text
+ESP32 / Simulator → MQTT Broker → FastAPI Backend → MongoDB → React Dashboard
+```
+
+The frontend is mainly responsible for displaying live status and alert history clearly. Alert creation and severity logic are handled by the backend.
