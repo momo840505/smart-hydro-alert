@@ -1,4 +1,4 @@
-# Smart Water Monitoring — Backend
+# Smart Hydro Alert
 
 FastAPI backend for an IoT smart water monitoring system. Subscribes to MQTT messages
 from ESP32 devices, stores readings in MongoDB, detects abnormal water-usage events
