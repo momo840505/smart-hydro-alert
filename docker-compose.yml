@@ -48,6 +48,8 @@ services:
       MQTT_PORT: "1883"
       MQTT_CLIENT_ID: "fastapi-backend"
       ALERT_DURATION_THRESHOLD_SEC: "300"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
     volumes:
       - ./app:/app/app
       - ./simulator:/app/simulator
