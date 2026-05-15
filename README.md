@@ -1,266 +1,240 @@
 # Smart Hydro Alert
 
-FastAPI backend for an IoT smart water monitoring system. Subscribes to MQTT messages
-from ESP32 devices, stores readings in MongoDB, detects abnormal water-usage events
-(water flowing ≥ 5 min with no human present), and pushes real-time updates to a
-React dashboard via WebSocket.
+Smart Hydro Alert is an IoT water monitoring and leak alert prototype built for Group 4.
 
+The system receives `0/1` sensor values from an ESP32 or simulator through MQTT, stores readings in MongoDB, applies backend decision logic, sends optional user notifications, and displays the current system state through a React dashboard.
+
+The current prototype supports:
+
+- real-time water flow monitoring
+- human presence detection
+- FC-37 / water-contact sensor detection
+- abnormal water usage warning
+- forgotten tap alert
+- local leak detection
+- critical leak / overflow detection
+- LED output state
+- buzzer output state
+- optional Telegram user notification
+- dashboard simulation without physical hardware
+
+---
+
+## Current Condition States
+
+| Status | Meaning |
+|---|---|
+| `NORMAL` | No water flow and no local water contact |
+| `NORMAL_FLOW` | Water is flowing while a human is present |
+| `WARNING` | Water is flowing with no human present, but the duration is still below the alert threshold |
+| `ALERT` | Water is flowing with no human present for too long |
+| `LEAK` | FC-37 / water sensor detects local water contact while no water flow is detected |
+| `CRITICAL` | Water flow and local water contact are both detected |
+
+---
+
+## Demo Time Logic
+
+For the demo, the backend uses a scaled time rule:
+
+```text
+1 real second = 10 system seconds
+30 real seconds = 300 system seconds
+```
+
+This means the 300-second abnormal-flow threshold can be demonstrated in about 30 seconds.
+
+This rule applies to both:
+
+```text
+dashboard / backend simulation
+real ESP32 sensor payloads
+```
+
+As long as the backend keeps receiving:
+
+```text
+water_flow = 1
+human_present = 0
+water_detected = 0
+```
+
+the backend will automatically calculate the running duration. After about 30 real seconds, the status changes from:
+
+```text
+WARNING → ALERT
+```
 
 ---
 
 ## Project Structure
 
 ```text
-5.backend/
+IoT-group4/
 ├── app/
-│   ├── api/                          # REST + WebSocket routers
-│   │   ├── alerts.py                 # GET /api/alerts
-│   │   ├── devices.py                # POST /register, GET /live, GET /history
-│   │   └── websocket.py              # /ws/devices/{device_id}
+│   ├── api/
+│   │   ├── alerts.py                 # Alert history API
+│   │   ├── devices.py                # Device live, history, simulate, reset APIs
+│   │   └── websocket.py              # WebSocket route for live device updates
 │   │
 │   ├── core/
-│   │   └── config.py                 # Settings (pydantic-settings, reads .env)
+│   │   └── config.py                 # App settings from environment variables
 │   │
 │   ├── database/
-│   │   ├── collections.py            # MongoDB collection name constants
-│   │   └── mongodb.py                # Motor client + Beanie init / teardown
+│   │   ├── collections.py            # MongoDB collection names
+│   │   └── mongodb.py                # MongoDB / Beanie setup
 │   │
 │   ├── models/
-│   │   ├── alert.py                  # Beanie Document — alerts collection
-│   │   ├── device.py                 # Beanie Document — devices collection
-│   │   ├── sensor.py                 # Beanie Document — sensor_logs collection
-│   │   └── payloads.py               # Pydantic models for MQTT/API payloads
+│   │   ├── alert.py                  # Alert document model
+│   │   ├── device.py                 # Device document model
+│   │   ├── sensor.py                 # Sensor history document model
+│   │   └── payloads.py               # MQTT/API payload schemas and status logic
 │   │
 │   ├── mqtt/
-│   │   ├── client.py                 # aiomqtt subscriber w/ reconnect loop
-│   │   ├── handlers.py               # Validate → route messages to services
-│   │   └── topics.py                 # Topic parsing helpers
+│   │   ├── client.py                 # MQTT subscriber client
+│   │   ├── handlers.py               # MQTT message validation and routing
+│   │   └── topics.py                 # MQTT topic parsing helpers
 │   │
 │   ├── services/
-│   │   ├── alert_service.py          # Alert rule + duplicate prevention
-│   │   ├── device_service.py         # Device register / touch / status
-│   │   ├── notification_service.py   # Telegram Bot notifications
-│   │   ├── sensor_service.py         # Sensor log storage + history queries
-│   │   └── websocket_manager.py      # WS connection registry + broadcast
+│   │   ├── alert_service.py          # ALERT / CRITICAL creation and duplicate prevention
+│   │   ├── device_service.py         # Device state, backend timer, reset logic
+│   │   ├── notification_service.py   # Telegram notification support
+│   │   ├── sensor_service.py         # Sensor history storage
+│   │   └── websocket_manager.py      # WebSocket connection manager
 │   │
-│   └── main.py                       # FastAPI app + lifespan (DB, MQTT)
+│   └── main.py                       # FastAPI app entry point
 │
-├── simulator/                        # Mock ESP32 — publishes MQTT for end-to-end testing
-│   ├── __main__.py                   # CLI: python -m simulator <scenario>
-│   ├── config.py                     # Reads MQTT_* env vars from .env
-│   ├── publisher.py                  # aiomqtt connect + publish helpers
-│   └── scenarios.py                  # leak / normal / intermittent / multi
+├── frontend-react/
+│   ├── src/
+│   │   ├── App.jsx                   # Main React dashboard
+│   │   ├── App.css                   # Dashboard styles
+│   │   ├── index.css                 # Global styles
+│   │   └── main.jsx                  # React entry point
+│   ├── package.json
+│   └── vite.config.js
 │
-├── frontend/                         # Minimal dashboard (static HTML/CSS/JS)
-│   └── index.html                    # Live device status + alerts table
+├── frontend/                         # Legacy static frontend
+│   └── index.html
 │
-├── tests/
-│   ├── test_alert_logic.py           # Alert rule unit tests
-│   ├── test_payloads.py              # Pydantic schema tests
-│   └── test_topics.py                # MQTT topic parsing tests
+├── simulator/
+│   ├── __main__.py                   # CLI simulator entry
+│   ├── config.py
+│   ├── publisher.py
+│   └── scenarios.py
 │
 ├── docker/
-│   └── mosquitto.conf                # MQTT broker config (anonymous, port 1883)
+│   └── mosquitto.conf                # MQTT broker config
 │
-├── README.md                         # This file
-├── Dockerfile                        # Backend + simulator image
-├── docker-compose.yml                # Mongo + Mosquitto + Backend + Simulator
-├── .dockerignore
-├── .env.example                      # Env var template (copy to .env)
+├── tests/
+│   ├── test_alert_logic.py
+│   ├── test_payloads.py
+│   └── test_topics.py
+│
+├── README.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── environment.yml
+├── pyproject.toml
+├── .env.example
 ├── .gitignore
-├── environment.yml                   # Conda env spec
-├── pyproject.toml                    # ruff + black + pytest config
-└── requirements.txt                  # pip dependencies
+└── .dockerignore
 ```
 
 ---
 
-## Prerequisites
+## Sensor Payload Format
 
-Pick **one** of two paths:
+The backend uses `0/1` values for sensor data.
 
-- **Docker path (recommended for testing)** — only Docker Desktop required. Everything else runs in containers via the provided `docker-compose.yml`.
-- **Local path (no Docker)** — install MongoDB and Mosquitto natively, run the backend in a local conda env.
+This is the format used by the code and dashboard.
 
-| Tool | Docker path | Local path |
+| Field | 0 means | 1 means |
 |---|---|---|
-| Docker Desktop | required | -- |
-| Anaconda / Miniconda | -- | required |
-| Python 3.11 | -- | via conda |
-| MongoDB 5.0+ | container | local install or Atlas |
-| Mosquitto 2.0+ | container | local install |
+| `water_flow` | No water flow | Water flow detected |
+| `human_present` | No human detected | Human detected |
+| `water_detected` | FC-37 / water sensor is dry | Water contact detected |
+| `alert` | No user alert required | User alert required |
+
+Example payload:
+
+```json
+{
+  "water_flow": 1,
+  "human_present": 0,
+  "water_detected": 1,
+  "alert": 1,
+  "status": "CRITICAL"
+}
+```
+
+For real MQTT messages from ESP32, the full payload should also include `device_id` and `timestamp`.
+
+Example MQTT payload:
+
+```json
+{
+  "device_id": "device01",
+  "timestamp": 1778926532,
+  "water_flow": 1,
+  "human_present": 0,
+  "water_detected": 1,
+  "alert": 1,
+  "status": "CRITICAL",
+  "running_duration_sec": 0,
+  "flow_rate_lpm": 6.1
+}
+```
 
 ---
 
-## Quickstart with Docker (recommended)
+## Decision Logic
 
-This starts MongoDB, Mosquitto, and the backend all in one command. The simulator
-runs on demand via `docker compose run`.
+| Status | Sensor condition | LED output | Buzzer output | Notify user |
+|---|---|---|---|---|
+| `NORMAL` | `water_flow=0`, `water_detected=0` | Green | Off | No |
+| `NORMAL_FLOW` | `water_flow=1`, `human_present=1`, `water_detected=0` | Blue | Off | No |
+| `WARNING` | `water_flow=1`, `human_present=0`, duration below threshold | Yellow | Off | No |
+| `ALERT` | `water_flow=1`, `human_present=0`, duration reaches threshold | Red | Intermittent | Yes |
+| `LEAK` | `water_flow=0`, `water_detected=1` | White | Slow beep | No |
+| `CRITICAL` | `water_flow=1`, `water_detected=1` | Red flashing | Continuous | Yes |
 
-### 1. Build and start the services
+The backend creates remote user notifications only for:
 
-```bash
-docker compose up --build
+```text
+ALERT
+CRITICAL
 ```
-
-Or, to run in the background:
-
-```bash
-docker compose up -d --build
-```
-
-On startup you should see:
-
-- `smartwater-mongo` ready and accepting connections on `localhost:27017`
-- `smartwater-mosquitto` listening on `localhost:1883`
-- `smartwater-backend` log: `mongo connected`, `mqtt connected`, `Uvicorn running on http://0.0.0.0:8000`
-- `smartwater-frontend` serving the dashboard on `localhost:3000`
-
-Open in your browser:
-
-- **Dashboard:** http://localhost:3000 — live device status + alerts table
-- **API docs (Swagger):** http://localhost:8000/docs
-- **Health check:** http://localhost:8000/health
-
-### 2. Run a simulator scenario (in a separate terminal)
-
-The `simulator` service is gated behind the `tools` profile so it doesn't auto-start.
-Invoke it as a one-shot:
-
-```bash
-# leak: should fire one alert at tick 300
-docker compose --profile tools run --rm simulator leak --device-id device01 --duration 310 --tick 0.1
-
-# normal: no alert expected
-docker compose --profile tools run --rm simulator normal --device-id device02 --duration 60 --tick 0.1
-
-# multi-device: device 0 leaks, others normal
-docker compose --profile tools run --rm simulator multi --count 4 --duration 320 --tick 0.1
-```
-
-While the simulator runs, the backend container's log will show every received message and the alert when it fires.
-
-### 3. Verify the pipeline
-
-From your host machine (host ports are mapped through):
-
-```bash
-# List alerts
-curl http://localhost:8000/api/alerts
-
-# Live device state
-curl http://localhost:8000/api/devices/device01/live
-
-# Recent sensor history
-curl "http://localhost:8000/api/devices/device01/history?limit=5"
-```
-
-Or open http://localhost:8000/docs and try the endpoints in Swagger UI.
-
-### 4. Stop / clean up
-
-```bash
-# Stop the stack (keeps data volumes)
-docker compose down
-
-# Stop AND delete Mongo + Mosquitto data
-docker compose down -v
-```
-
-### Useful Docker commands
-
-```bash
-# Tail backend logs
-docker compose logs -f backend
-
-# Tail Mosquitto logs (see every published message broker-side)
-docker compose logs -f mosquitto
-
-# Open a shell inside the backend container
-docker compose exec backend bash
-
-# Open a Mongo shell
-docker compose exec mongo mongosh smart_water
-```
-
-> **Hot reload:** the compose file bind-mounts `./app` and `./simulator` into the
-> backend container, and uvicorn runs with `--reload`, so code edits take effect
-> without a rebuild. Rebuild only when `requirements.txt` changes:
-> `docker compose up -d --build backend`.
 
 ---
 
-## Getting Started (local path, without Docker)
+## MQTT Topics
 
-### 1. Create the local conda env (one-time)
+The backend subscribes to these MQTT topic patterns:
 
-The `.conda/` directory at the project root is a **prefix env** — isolated to this project.
-
-```bash
-conda create --prefix ./.conda python=3.11 pip -y
-./.conda/python.exe -m pip install -r requirements.txt
+```text
+home/+/+/sensor
+home/+/+/alert
+home/+/+/status
 ```
 
-Or, using the provided `environment.yml`:
+Example sensor topic:
 
-```bash
-conda env create --prefix ./.conda -f environment.yml
+```text
+home/bathroom/device01/sensor
 ```
 
-### 2. Configure environment variables
+Example status topic:
 
-```bash
-cp .env.example .env
+```text
+home/bathroom/device01/status
 ```
 
-Then edit `.env` and set at minimum:
+Example alert topic:
 
-- `MONGO_URI` — MongoDB connection string
-- `MQTT_HOST` / `MQTT_PORT` — Mosquitto broker
-- `JWT_SECRET` — replace with a long random string
-- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — optional, leave empty to disable notifications
-
-### 3. Start the dependencies
-
-You need **MongoDB** and **Mosquitto** running locally before the backend starts.
-
-Quick option — Docker:
-
-```bash
-docker run -d --name mongo -p 27017:27017 mongo:7
-docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 \
-  mosquitto -c /mosquitto-no-auth.conf
+```text
+home/bathroom/device01/alert
 ```
-
-### 4. Activate the env
-
-```bash
-conda activate ./.conda
-```
-
-Or skip activation and call the binaries by path:
-
-- Windows: `.\.conda\Scripts\uvicorn.exe ...`
-- macOS / Linux: `./.conda/bin/uvicorn ...`
-
-### 5. Run the backend
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-On startup, the backend will:
-
-1. Connect to MongoDB and initialise Beanie ODM
-2. Start the MQTT subscriber as a background task
-3. Subscribe to `home/+/+/sensor`, `home/+/+/alert`, `home/+/+/status`
-4. Serve REST + WebSocket endpoints on port `8000`
-
-Once running:
-
-- API docs (Swagger): http://localhost:8000/docs
-- API docs (ReDoc): http://localhost:8000/redoc
-- Health check: http://localhost:8000/health
 
 ---
 
@@ -268,280 +242,587 @@ Once running:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET`  | `/health` | Liveness probe |
-| `POST` | `/api/devices/register` | Register a new ESP32 device |
-| `GET`  | `/api/devices/{device_id}/live` | Latest live state |
-| `GET`  | `/api/devices/{device_id}/history` | Sensor log history (filter by `start_time`, `end_time`, `limit`) |
-| `GET`  | `/api/alerts` | Alert history (filter by `device_id`, `start_time`, `end_time`, `limit`) |
-| `WS`   | `/ws/devices/{device_id}` | Live `sensor_update` / `alert_created` / `device_status` events |
+| `GET` | `/health` | Backend health check |
+| `POST` | `/api/devices/register` | Register or update a device |
+| `GET` | `/api/devices` | List all devices |
+| `GET` | `/api/devices/{device_id}/live` | Get latest live state for one device |
+| `GET` | `/api/devices/{device_id}/history` | Get sensor history |
+| `POST` | `/api/devices/{device_id}/simulate` | Send simulated `0/1` sensor values into the backend |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=0` | Reset device state to normal |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=1` | Reset device state and clear demo logs |
+| `GET` | `/api/alerts` | Get alert history |
+| `WS` | `/ws/devices/{device_id}` | Live WebSocket events |
 
 ---
 
-## Testing the Pipeline End-to-End
+## Prerequisites
 
-The `simulator/` package mocks an ESP32 publishing MQTT — use it to exercise the
-full backend pipeline without any hardware.
+Recommended setup:
 
-### Prerequisites
+| Tool | Purpose |
+|---|---|
+| Docker Desktop | Runs MongoDB, Mosquitto, backend, and optional frontend container |
+| Node.js + npm | Runs the React/Vite dashboard locally |
+| Git | Version control |
 
-The backend, MongoDB, and Mosquitto must be running. The simulator uses the same
-`MQTT_HOST` / `MQTT_PORT` / `MQTT_USERNAME` / `MQTT_PASSWORD` from `.env` as the
-backend.
+---
 
-### Available scenarios
+## Quickstart with Docker Backend + React Dev Server
 
-| Scenario | What it does | Expected backend outcome |
-|---|---|---|
-| `leak` | Water flowing, no human, duration counter incrementing | Alert fires at `running_duration_sec == 300` |
-| `normal` | Random water/human, mostly human present | No alert |
-| `intermittent` | Water cycles on/off, human always present | No alert |
-| `multi` | Multiple devices concurrently (device 0 = leak, rest = normal) | One alert (from device 0) |
+This is the recommended setup for development and demo.
 
-### Run a scenario
+### 1. Start backend services
 
-```bash
-# Fastest end-to-end alert test: tick every 100ms, simulate 310 "seconds" in ~31s real time
-python -m simulator leak --device-id device01 --location bathroom --duration 310 --tick 0.1
+From the project root:
 
-# Normal usage
-python -m simulator normal --device-id device02 --duration 60
-
-# Cycling water with human present
-python -m simulator intermittent --device-id device03 --duration 60
-
-# Multiple devices at once
-python -m simulator multi --count 4 --duration 320 --tick 0.1
+```powershell
+cd C:\Users\momo8\Documents\GitHub\personal-clone\IoT-group4
+docker compose up -d --build mongo mosquitto backend
 ```
 
-> **Note on `--tick`**: it's the wall-clock interval between sensor messages. The
-> `running_duration_sec` field still increments by 1 per tick, so a small tick
-> compresses the simulation. With `--tick 0.1`, the 300-second alert threshold is
-> reached in 30 seconds of real time.
+Check running containers:
 
-### What to look for
-
-When `leak` runs against a live backend:
-
-1. Backend log shows `sensor → ...` lines as it ingests each message.
-2. At tick #300, backend log shows `alert created: device=device01 duration=300s strength=LOW`.
-3. MongoDB: `sensor_logs` has 300+ documents, `alerts` has 1 document, `devices.device01.active_alert_at` is non-null.
-4. WebSocket clients on `/ws/devices/device01` receive a stream of `sensor_update` events plus one `alert_created` event.
-5. If Telegram is configured: a message arrives in your chat.
-
-### Watching the backend reactions
-
-In a third terminal, tail the alerts collection or hit the API:
-
-```bash
-# Open API docs and try GET /api/alerts
-http://localhost:8000/docs
-
-# Or via curl
-curl http://localhost:8000/api/alerts | jq
-
-# Or subscribe to WebSocket (using websocat or similar)
-websocat ws://localhost:8000/ws/devices/device01
+```powershell
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-### Manual one-off publish (without the simulator)
+Expected containers:
 
-If you just want to fire a single message:
+```text
+smartwater-mongo
+smartwater-mosquitto
+smartwater-backend
+```
 
-```bash
-mosquitto_pub -h localhost -t home/bathroom/device01/sensor -m '{
-  "device_id": "device01",
-  "timestamp": 1778926532,
-  "water_flow": true,
-  "human_present": false,
-  "running_duration_sec": 301
-}'
+Backend URLs:
+
+```text
+Backend API: http://localhost:8000
+Swagger docs: http://localhost:8000/docs
+Health check: http://localhost:8000/health
+```
+
+### 2. Start React dashboard
+
+Open a second PowerShell terminal:
+
+```powershell
+cd C:\Users\momo8\Documents\GitHub\personal-clone\IoT-group4\frontend-react
+npm install
+npm run dev
+```
+
+Then open the URL shown by Vite.
+
+Usually:
+
+```text
+http://localhost:5173/
+```
+
+If port 5173 is already in use, Vite may show another port, for example:
+
+```text
+http://localhost:5174/
+```
+
+Use the port shown in the terminal.
+
+---
+
+## Docker Frontend Option
+
+The `docker-compose.yml` can also serve the React build through Nginx on port `3000`.
+
+Build the React frontend first:
+
+```powershell
+cd frontend-react
+npm install
+npm run build
+cd ..
+```
+
+Then start the frontend container:
+
+```powershell
+docker compose up -d --build frontend
+```
+
+Open:
+
+```text
+http://localhost:3000/
+```
+
+For active development, use the Vite dev server on `5173` or `5174`.
+
+For Docker demo serving, use `3000`.
+
+---
+
+## React Dashboard Features
+
+The React dashboard shows:
+
+- backend online/offline state
+- selected device ID
+- current system status
+- flow sensor value
+- human presence value
+- FC-37 / water sensor value
+- running duration
+- LED output
+- buzzer output
+- notify user status
+- simulation scenario buttons
+- reset normal button
+- clear demo button
+- compact device history
+- alert history
+- technical backend values
+
+Dashboard status colours:
+
+| Status | Dashboard colour / visual |
+|---|---|
+| `NORMAL` | Green |
+| `NORMAL_FLOW` | Blue |
+| `WARNING` | Yellow |
+| `ALERT` | Red |
+| `LEAK` | White / light blue |
+| `CRITICAL` | Red flashing |
+
+---
+
+## Dashboard Demo Buttons
+
+The dashboard includes built-in scenario buttons.
+
+| Button | Expected result |
+|---|---|
+| `Normal` | Green normal state |
+| `Normal Flow` | Blue normal water usage |
+| `Warning` | Yellow suspicious water usage |
+| `Alert` | Red forgotten tap risk |
+| `Leak` | White local water detection |
+| `Critical` | Red flashing critical risk |
+| `Reset Normal` | Return to normal state |
+| `Clear Demo` | Reset state and clear demo logs |
+
+Use `Reset Normal` before a simple demo.
+
+Use `Clear Demo` before recording or presenting a clean full demo.
+
+---
+
+## PowerShell Dynamic Demo Tests
+
+These tests send repeated backend simulation payloads. They are useful when no physical sensors are connected.
+
+Open a new PowerShell terminal from the project root.
+
+### Helper functions
+
+```powershell
+$base = "http://localhost:8000"
+$device = "device01"
+
+function Send-Sensor {
+    param(
+        [int]$Flow,
+        [int]$Human,
+        [int]$Water,
+        [double]$Rate = 0
+    )
+
+    $body = @{
+        water_flow = $Flow
+        human_present = $Human
+        water_detected = $Water
+        alert = 0
+        running_duration_sec = 0
+        flow_rate_lpm = $Rate
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "$base/api/devices/$device/simulate" `
+        -ContentType "application/json" `
+        -Body $body
+}
+
+function Reset-Normal {
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "$base/api/devices/$device/reset?clear_logs=0"
+}
+
+function Clear-Demo {
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "$base/api/devices/$device/reset?clear_logs=1"
+}
+```
+
+---
+
+### A. Normal usage path: green → blue → green
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 8; $i++) {
+    Send-Sensor 1 1 0 3.2
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected dashboard result:
+
+```text
+NORMAL → NORMAL_FLOW → NORMAL
+```
+
+---
+
+### B. Forgotten tap path: green → yellow → red
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 35; $i++) {
+    Send-Sensor 1 0 0 4.5
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected dashboard result:
+
+```text
+NORMAL → WARNING → ALERT
+```
+
+The backend applies:
+
+```text
+1 real second = 10 system seconds
+```
+
+So after around 30 real seconds, the system reaches 300 system seconds and changes to `ALERT`.
+
+---
+
+### C. Local leak path: green → white → green
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected dashboard result:
+
+```text
+NORMAL → LEAK → NORMAL
+```
+
+---
+
+### D. Local leak becomes critical: green → white → red flashing
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 8; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 1 0 1 6.1
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected dashboard result:
+
+```text
+NORMAL → LEAK → CRITICAL
+```
+
+---
+
+### E. Full demo path: green → blue → yellow → red → red flashing
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 6; $i++) {
+    Send-Sensor 1 1 0 3.2
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 35; $i++) {
+    Send-Sensor 1 0 0 4.5
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 1 0 1 6.1
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected dashboard result:
+
+```text
+NORMAL → NORMAL_FLOW → WARNING → ALERT → CRITICAL
+```
+
+---
+
+## MQTT Simulator
+
+The `simulator/` package mocks an ESP32 publishing MQTT messages.
+
+Run simulator commands from the project root.
+
+```powershell
+docker compose --profile tools run --rm simulator leak --device-id device01 --duration 310 --tick 0.1
+```
+
+The `--tick` value controls the wall-clock interval between messages.
+
+For older simulator scenarios:
+
+```text
+--tick 0.1
+```
+
+means one simulated second is sent every 0.1 real seconds.
+
+The newer backend demo logic also supports:
+
+```text
+1 real second = 10 system seconds
+```
+
+for continuous abnormal flow when real or simulated sensor messages arrive repeatedly.
+
+---
+
+## Manual MQTT Publish
+
+You can manually publish a sensor message through Mosquitto.
+
+Example `NORMAL_FLOW` payload:
+
+```powershell
+$payload = @{
+    device_id = "device01"
+    timestamp = [int][double]::Parse((Get-Date -UFormat %s))
+    water_flow = 1
+    human_present = 1
+    water_detected = 0
+    alert = 0
+    status = "NORMAL_FLOW"
+    running_duration_sec = 0
+    flow_rate_lpm = 3.2
+} | ConvertTo-Json -Compress
+
+docker exec smartwater-mosquitto mosquitto_pub `
+    -h localhost `
+    -t home/bathroom/device01/sensor `
+    -m $payload
+```
+
+Example `CRITICAL` payload:
+
+```powershell
+$payload = @{
+    device_id = "device01"
+    timestamp = [int][double]::Parse((Get-Date -UFormat %s))
+    water_flow = 1
+    human_present = 0
+    water_detected = 1
+    alert = 1
+    status = "CRITICAL"
+    running_duration_sec = 0
+    flow_rate_lpm = 6.1
+} | ConvertTo-Json -Compress
+
+docker exec smartwater-mosquitto mosquitto_pub `
+    -h localhost `
+    -t home/bathroom/device01/sensor `
+    -m $payload
+```
+
+---
+
+## Telegram Notification
+
+The backend can send Telegram notifications for:
+
+```text
+ALERT
+CRITICAL
+```
+
+Do not hard-code Telegram credentials in `docker-compose.yml`.
+
+Use environment variables instead.
+
+Create a `.env` file from `.env.example`:
+
+```powershell
+copy .env.example .env
+```
+
+Then set:
+
+```text
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+Leave them empty if Telegram notification is not needed.
+
+Important:
+
+```text
+Do not commit .env to GitHub.
+```
+
+---
+
+## Useful Docker Commands
+
+```powershell
+docker compose ps
+```
+
+```powershell
+docker compose logs -f backend
+```
+
+```powershell
+docker compose logs -f mosquitto
+```
+
+```powershell
+docker compose restart backend
+```
+
+```powershell
+docker compose down
+```
+
+```powershell
+docker compose down -v
+```
+
+Open Mongo shell:
+
+```powershell
+docker exec -it smartwater-mongo mongosh smart_water
+```
+
+Clear demo data manually:
+
+```powershell
+docker exec -it smartwater-mongo mongosh smart_water --eval "db.sensor_logs.deleteMany({}); db.alerts.deleteMany({}); db.devices.deleteMany({});"
 ```
 
 ---
 
 ## Development Commands
 
-Run from the project root with the conda env active.
+Run tests:
 
-```bash
-# Run tests
+```powershell
 pytest -q
+```
 
-# Lint
+Run lint:
+
+```powershell
 ruff check app tests
+```
 
-# Auto-fix lint
-ruff check --fix app tests
+Format code:
 
-# Format
+```powershell
 black app tests
+```
+
+Build React dashboard:
+
+```powershell
+cd frontend-react
+npm run build
+cd ..
 ```
 
 ---
 
-## Notes
+## Data Flow
 
-- All timestamps in MQTT payloads and database documents are **Unix epoch seconds (UTC)** as integers — see [`schemas.md`](schemas.md).
-- The duplicate-alert prevention uses `Device.active_alert_at` in MongoDB, so it survives backend restarts.
-- The MQTT subscriber reconnects with exponential backoff (1s → 30s cap).
-- For multi-instance deployments, the in-memory `WebSocketManager` would need a pub/sub backend (e.g. Redis); single-instance is fine for development.
-
-## React Frontend Dashboard
-
-This project includes a Vite + React dashboard for the Smart Water Monitoring and Alert System.
-
-The dashboard visualises live IoT data from the backend and shows whether the system has detected abnormal water usage. It is designed for the Group 4 demo and connects the ESP32/MQTT/backend pipeline to a clear web interface.
-
-### Dashboard Features
-
-The React dashboard displays:
-
-- backend connection status
-- selected device ID
-- live water flow status
-- live human presence status
-- current running duration
-- latest flow rate
-- active alert status
-- abnormal water usage alert history
-- system logic summary
-- demo scenario explanation
-- IoT architecture flow
-
-The dashboard also refreshes automatically every few seconds and includes a manual **Sync Dashboard** button.
-
-### Frontend Location
-
-The React frontend is located in:
+The system data flow is:
 
 ```text
-frontend-react/
+ESP32 / Simulator
+        ↓
+MQTT Broker
+        ↓
+FastAPI Backend
+        ↓
+MongoDB
+        ↓
+React Dashboard
+        ↓
+LED / Buzzer / User Notification Display
 ```
 
-Main frontend files:
+The frontend does not decide the real alert state.  
+The backend handles sensor validation, status classification, duration timing, alert creation, and notification logic.
 
-```text
-frontend-react/src/App.jsx
-frontend-react/src/App.css
-```
-
-### Backend API Used by the Dashboard
-
-The dashboard connects to the FastAPI backend using these endpoints:
-
-```text
-GET /health
-GET /api/devices/{device_id}/live
-GET /api/devices/{device_id}/history?limit=1
-GET /api/alerts?device_id={device_id}
-```
-
-For the current demo, the default device is:
-
-```text
-device01
-```
-
-### Run the Backend Services
-
-From the project root:
-
-```powershell
-docker compose up -d
-```
-
-Check running containers:
-
-```powershell
-docker compose ps
-```
-
-The main services should include:
-
-```text
-smartwater-mosquitto
-smartwater-mongo
-smartwater-backend
-```
-
-### Run the React Frontend
-
-From the project root:
-
-```powershell
-cd frontend-react
-npm install
-npm run dev
-```
-
-Then open the dashboard in the browser:
-
-```text
-http://localhost:5173
-```
-
-### Run Demo Simulator Scenarios
-
-From the project root, run simulator commands in a separate terminal.
-
-#### Leak / abnormal water usage scenario
-
-```powershell
-docker compose --profile tools run --rm simulator leak --device-id device01 --duration 310 --tick 0.1
-```
-
-This simulates water running while no human is detected. Once the running duration reaches 300 seconds, the backend records a `WATER_RUNNING_NO_HUMAN` alert.
-
-Expected dashboard result:
-
-```text
-Water Flow: YES
-Human Present: NO
-Running Duration: 300s or above
-Active Alert: YES
-Alert History: new WATER_RUNNING_NO_HUMAN event
-```
-
-#### Normal usage scenario
-
-```powershell
-docker compose --profile tools run --rm simulator normal --device-id device01 --duration 60 --tick 0.1
-```
-
-This is used to test normal system behaviour where the alert condition should not be triggered.
-
-#### Intermittent usage scenario
-
-```powershell
-docker compose --profile tools run --rm simulator intermittent --device-id device01 --duration 120 --tick 0.1
-```
-
-This is used to test changing sensor readings and confirm that short or interrupted usage does not create the same continuous abnormal usage alert.
-
-### Alert Rule
-
-The current alert rule is:
-
-```text
-water_flow = true
-human_present = false
-running_duration_sec >= 300
-```
-
-When this condition is met, the backend records an abnormal water usage alert.
-
-Current alert type:
-
-```text
-WATER_RUNNING_NO_HUMAN
-```
-
-### Notes for Demo
-
-The dashboard is connected to the backend API, not directly to MQTT. The data flow is:
-
-```text
-ESP32 / Simulator → MQTT Broker → FastAPI Backend → MongoDB → React Dashboard
-```
-
-The frontend is mainly responsible for displaying live status and alert history clearly. Alert creation and severity logic are handled by the backend.
+The dashboard displays the backend state clearly for demo and monitoring.
