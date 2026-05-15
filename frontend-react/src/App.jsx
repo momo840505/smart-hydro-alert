@@ -2,267 +2,798 @@
 import "./App.css";
 
 const API_BASE = "http://localhost:8000";
+const DEFAULT_DEVICE_ID = "device01";
+const ALERT_THRESHOLD = 300;
 
-function App() {
-    const [deviceId, setDeviceId] = useState("device01");
-    const [health, setHealth] = useState(false);
-    const [latest, setLatest] = useState(null);
-    const [history, setHistory] = useState([]);
-    const [alerts, setAlerts] = useState([]);
-    const [syncing, setSyncing] = useState(false);
-    const [lastUpdated, setLastUpdated] = useState("Never");
+const SCENARIOS = [
+    {
+        key: "NORMAL",
+        emoji: "🌿",
+        title: "Normal",
+        subtitle: "No flow + no leak",
+        payload: {
+            water_flow: 0,
+            human_present: 0,
+            water_detected: 0,
+            alert: 0,
+            status: "NORMAL",
+            running_duration_sec: 0,
+            flow_rate_lpm: 0,
+        },
+    },
+    {
+        key: "NORMAL_FLOW",
+        emoji: "🚰",
+        title: "Normal Flow",
+        subtitle: "Flow + human present",
+        payload: {
+            water_flow: 1,
+            human_present: 1,
+            water_detected: 0,
+            alert: 0,
+            status: "NORMAL_FLOW",
+            running_duration_sec: 0,
+            flow_rate_lpm: 3.2,
+        },
+    },
+    {
+        key: "WARNING",
+        emoji: "🌤️",
+        title: "Warning",
+        subtitle: "Flow + no human + short duration",
+        payload: {
+            water_flow: 1,
+            human_present: 0,
+            water_detected: 0,
+            alert: 0,
+            status: "WARNING",
+            running_duration_sec: 120,
+            flow_rate_lpm: 3.8,
+        },
+    },
+    {
+        key: "ALERT",
+        emoji: "🚨",
+        title: "Alert",
+        subtitle: "Flow + no human + long duration",
+        payload: {
+            water_flow: 1,
+            human_present: 0,
+            water_detected: 0,
+            alert: 1,
+            status: "ALERT",
+            running_duration_sec: 310,
+            flow_rate_lpm: 4.6,
+        },
+    },
+    {
+        key: "LEAK",
+        emoji: "💧",
+        title: "Leak",
+        subtitle: "FC-37 detects water only",
+        payload: {
+            water_flow: 0,
+            human_present: 0,
+            water_detected: 1,
+            alert: 0,
+            status: "LEAK",
+            running_duration_sec: 0,
+            flow_rate_lpm: 0,
+        },
+    },
+    {
+        key: "CRITICAL",
+        emoji: "🔥",
+        title: "Critical",
+        subtitle: "Flow + FC-37 detects water",
+        payload: {
+            water_flow: 1,
+            human_present: 0,
+            water_detected: 1,
+            alert: 1,
+            status: "CRITICAL",
+            running_duration_sec: 330,
+            flow_rate_lpm: 6.1,
+        },
+    },
+];
 
-    const syncDashboard = useCallback(async (showLoading = true) => {
-        try {
-            if (showLoading) {
-                setSyncing(true);
-            }
+const LOGIC_RULES = [
+    {
+        status: "NORMAL",
+        condition: "No flow + no leak",
+        meaning: "System idle / normal",
+        led: "Green",
+        buzzer: "Off",
+        notify: "No",
+    },
+    {
+        status: "NORMAL_FLOW",
+        condition: "Flow + human present",
+        meaning: "Normal water usage",
+        led: "Blue",
+        buzzer: "Off",
+        notify: "No",
+    },
+    {
+        status: "WARNING",
+        condition: "Flow + no human + short duration",
+        meaning: "Suspicious abnormal usage",
+        led: "Yellow",
+        buzzer: "Off",
+        notify: "No",
+    },
+    {
+        status: "ALERT",
+        condition: "Flow + no human + long duration",
+        meaning: "Forgotten tap / abnormal flow",
+        led: "Red",
+        buzzer: "Intermittent",
+        notify: "Yes",
+    },
+    {
+        status: "LEAK",
+        condition: "FC-37 detects water only",
+        meaning: "Possible local leak / overflow",
+        led: "White",
+        buzzer: "Slow beep",
+        notify: "No",
+    },
+    {
+        status: "CRITICAL",
+        condition: "Flow + FC-37 detects water",
+        meaning: "Severe leak / overflow condition",
+        led: "Red flashing",
+        buzzer: "Continuous",
+        notify: "Yes",
+    },
+];
 
-            const [healthRes, liveRes, historyRes, alertRes] = await Promise.all([
-                fetch(`${API_BASE}/health`),
-                fetch(`${API_BASE}/api/devices/${deviceId}/live`),
-                fetch(`${API_BASE}/api/devices/${deviceId}/history?limit=1`),
-                fetch(`${API_BASE}/api/alerts?device_id=${deviceId}`),
-            ]);
+function toBool(value) {
+    return value === 1 || value === true || value === "1" || value === "true";
+}
 
-            setHealth(healthRes.ok);
+function to01(value) {
+    return toBool(value) ? 1 : 0;
+}
 
-            const liveData = liveRes.ok ? await liveRes.json() : null;
-            setLatest(liveData);
+function compactHistory(items) {
+    const ordered = [...items].reverse();
+    const compact = [];
 
-            const historyData = historyRes.ok ? await historyRes.json() : [];
-            setHistory(historyData);
+    for (const item of ordered) {
+        const last = compact[compact.length - 1];
 
-            const alertData = alertRes.ok ? await alertRes.json() : [];
-            setAlerts(alertData);
-
-            setLastUpdated(new Date().toLocaleTimeString());
-        } catch (error) {
-            console.error(error);
-            setHealth(false);
-        } finally {
-            if (showLoading) {
-                setSyncing(false);
-            }
+        if (!last || last.status !== item.status) {
+            compact.push(item);
         }
-    }, [deviceId]);
+    }
 
-    useEffect(() => {
-        const firstLoad = setTimeout(() => {
-            syncDashboard(false);
-        }, 0);
+    return compact.reverse();
+}
 
-        const timer = setInterval(() => {
-            syncDashboard(false);
-        }, 3000);
+function formatTime(value) {
+    if (!value) return "—";
 
-        return () => {
-            clearTimeout(firstLoad);
-            clearInterval(timer);
-        };
-    }, [syncDashboard]);
+    const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
 
-    const waterFlow = latest?.water_flow ?? false;
-    const humanPresent = latest?.human_present ?? false;
-    const runningDuration = latest?.running_duration_sec ?? 0;
-    const flowRate = history?.[0]?.flow_rate_lpm ?? 0;
-    const activeAlert = latest?.has_active_alert ?? false;
-    const deviceStatus = latest?.status ?? "UNKNOWN";
-    const lastSeen = latest?.last_seen
-        ? new Date(latest.last_seen * 1000).toLocaleTimeString()
-        : "—";
+    return date.toLocaleTimeString("en-AU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    });
+}
+
+function formatDateTime(value) {
+    if (!value) return "—";
+
+    const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+
+    return date.toLocaleString("en-AU", {
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    });
+}
+
+function deriveStatus(waterFlow, humanPresent, waterDetected, duration, backendStatus) {
+    if (backendStatus) return backendStatus;
+    if (waterFlow && waterDetected) return "CRITICAL";
+    if (!waterFlow && waterDetected) return "LEAK";
+    if (waterFlow && !humanPresent && duration >= ALERT_THRESHOLD) return "ALERT";
+    if (waterFlow && !humanPresent) return "WARNING";
+    if (waterFlow && humanPresent) return "NORMAL_FLOW";
+    return "NORMAL";
+}
+
+function getStatusMeta(status) {
+    const map = {
+        NORMAL: {
+            label: "NORMAL",
+            className: "normal",
+            emoji: "🌿",
+            title: "Everything looks good",
+            message: "No water flow and no water contact are detected. The system is idle and safe.",
+            led: "Green",
+            ledClass: "led-green",
+            buzzer: "Off",
+            notify: "No",
+            color: "#22c55e",
+        },
+        NORMAL_FLOW: {
+            label: "NORMAL_FLOW",
+            className: "normal-flow",
+            emoji: "🚰",
+            title: "Normal water usage",
+            message: "Water is flowing while a person is nearby, so this is treated as normal use.",
+            led: "Blue",
+            ledClass: "led-blue",
+            buzzer: "Off",
+            notify: "No",
+            color: "#0ea5e9",
+        },
+        WARNING: {
+            label: "WARNING",
+            className: "warning",
+            emoji: "🌤️",
+            title: "Suspicious water usage",
+            message: "Water is flowing with no human nearby, but it has not reached the alert time limit yet.",
+            led: "Yellow",
+            ledClass: "led-yellow",
+            buzzer: "Off",
+            notify: "No",
+            color: "#f59e0b",
+        },
+        ALERT: {
+            label: "ALERT",
+            className: "alert",
+            emoji: "🚨",
+            title: "Forgotten tap risk",
+            message: "Water has been running without human presence for too long. The user should be notified.",
+            led: "Red",
+            ledClass: "led-red",
+            buzzer: "Intermittent",
+            notify: "Yes",
+            color: "#f43f5e",
+        },
+        LEAK: {
+            label: "LEAK",
+            className: "leak",
+            emoji: "💧",
+            title: "Local water detected",
+            message: "The FC-37 sensor detected water contact while the flow sensor reports no flow.",
+            led: "White",
+            ledClass: "led-white",
+            buzzer: "Slow beep",
+            notify: "No",
+            color: "#38bdf8",
+        },
+        CRITICAL: {
+            label: "CRITICAL",
+            className: "critical",
+            emoji: "🔥",
+            title: "Critical leak or overflow risk",
+            message: "Water flow and local water contact are both detected. This is the highest risk state.",
+            led: "Red flashing",
+            ledClass: "led-red flashing",
+            buzzer: "Continuous",
+            notify: "Yes",
+            color: "#ef4444",
+        },
+    };
 
     return (
-        <main className="page">
+        map[status] ?? {
+            label: "WAITING",
+            className: "waiting",
+            emoji: "⏳",
+            title: "Waiting for data",
+            message: "Send a demo scenario or connect the ESP32 to start monitoring.",
+            led: "—",
+            ledClass: "led-off",
+            buzzer: "—",
+            notify: "—",
+            color: "#94a3b8",
+        }
+    );
+}
+
+function SensorCard({ emoji, title, value, raw, detail, active }) {
+    return (
+        <article className={`sensor-card ${active ? "active" : ""}`}>
+            <div className="sensor-icon">{emoji}</div>
+            <div>
+                <p>{title}</p>
+                <h3>{value}</h3>
+                <span>{detail}</span>
+            </div>
+            <code>{raw}</code>
+        </article>
+    );
+}
+
+function OutputCard({ title, value, children }) {
+    return (
+        <article className="output-card">
+            <p>{title}</p>
+            <h3>{value}</h3>
+            {children}
+        </article>
+    );
+}
+
+function App() {
+    const [health, setHealth] = useState(false);
+    const [devices, setDevices] = useState([]);
+    const [selectedDevice, setSelectedDevice] = useState(DEFAULT_DEVICE_ID);
+    const [live, setLive] = useState(null);
+    const [history, setHistory] = useState([]);
+    const [alerts, setAlerts] = useState([]);
+    const [lastCheck, setLastCheck] = useState(null);
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [scenarioBusy, setScenarioBusy] = useState("");
+    const [showRaw, setShowRaw] = useState(false);
+
+    const loadDashboard = useCallback(
+        async ({ showLoading = false } = {}) => {
+            if (showLoading) {
+                setLoading(true);
+            }
+
+            setError("");
+
+            try {
+                const healthRes = await fetch(`${API_BASE}/health`);
+                setHealth(healthRes.ok);
+
+                const devicesRes = await fetch(`${API_BASE}/api/devices`);
+                const devicesData = devicesRes.ok ? await devicesRes.json() : [];
+                setDevices(devicesData);
+
+                const currentDevice =
+                    selectedDevice || devicesData?.[0]?.device_id || DEFAULT_DEVICE_ID;
+
+                if (!selectedDevice) {
+                    setSelectedDevice(currentDevice);
+                }
+
+                const [liveRes, historyRes, alertRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/devices/${currentDevice}/live`),
+                    fetch(`${API_BASE}/api/devices/${currentDevice}/history?limit=80`),
+                    fetch(`${API_BASE}/api/alerts?device_id=${currentDevice}&limit=10`),
+                ]);
+
+                if (liveRes.ok) {
+                    setLive(await liveRes.json());
+                }
+
+                if (historyRes.ok) {
+                    setHistory(await historyRes.json());
+                }
+
+                if (alertRes.ok) {
+                    setAlerts(await alertRes.json());
+                }
+
+                setLastCheck(new Date());
+            } catch (err) {
+                setHealth(false);
+                setError("Cannot connect to backend. Please check Docker backend is running.");
+                console.error(err);
+            } finally {
+                if (showLoading) {
+                    setLoading(false);
+                }
+            }
+        },
+        [selectedDevice],
+    );
+
+    useEffect(() => {
+        const firstLoadTimer = window.setTimeout(() => {
+            void loadDashboard();
+        }, 0);
+
+        const intervalTimer = window.setInterval(() => {
+            void loadDashboard();
+        }, 2500);
+
+        return () => {
+            window.clearTimeout(firstLoadTimer);
+            window.clearInterval(intervalTimer);
+        };
+    }, [loadDashboard]);
+
+    const latest = live ?? history?.[0] ?? {};
+
+    const waterFlow = toBool(latest.water_flow);
+    const humanPresent = toBool(latest.human_present);
+    const waterDetected = toBool(latest.water_detected);
+    const alert = toBool(latest.alert);
+    const duration = Number(latest.running_duration_sec ?? 0);
+    const flowRate = latest.flow_rate_lpm ?? 0;
+
+    const status = deriveStatus(
+        waterFlow,
+        humanPresent,
+        waterDetected,
+        duration,
+        latest.status,
+    );
+
+    const meta = getStatusMeta(status);
+    const currentRule = LOGIC_RULES.find((rule) => rule.status === status);
+    const displayHistory = compactHistory(history).slice(0, 5);
+
+    async function runScenario(scenario) {
+        setScenarioBusy(scenario.key);
+        setError("");
+
+        try {
+            const response = await fetch(`${API_BASE}/api/devices/${selectedDevice}/simulate`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(scenario.payload),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Simulation failed: ${response.status}`);
+            }
+
+            await loadDashboard();
+        } catch (err) {
+            setError("Simulation failed. Please check backend is running.");
+            console.error(err);
+        } finally {
+            setScenarioBusy("");
+        }
+    }
+
+    async function resetToNormal({ clearLogs = false } = {}) {
+        setScenarioBusy(clearLogs ? "CLEAR" : "RESET");
+        setError("");
+
+        try {
+            const response = await fetch(
+                `${API_BASE}/api/devices/${selectedDevice}/reset?clear_logs=${clearLogs ? 1 : 0}`,
+                {
+                    method: "POST",
+                },
+            );
+
+            if (!response.ok) {
+                throw new Error(`Reset failed: ${response.status}`);
+            }
+
+            if (clearLogs) {
+                setHistory([]);
+                setAlerts([]);
+            }
+
+            await loadDashboard();
+        } catch (err) {
+            setError("Reset failed. Please check backend is running.");
+            console.error(err);
+        } finally {
+            setScenarioBusy("");
+        }
+    }
+
+    return (
+        <main className="dashboard-shell">
+            <div className="sunny-background">
+                <div className="blob blob-a" />
+                <div className="blob blob-b" />
+                <div className="blob blob-c" />
+            </div>
+
             <section className="hero">
-                <div className="hero-text">
-                    <p className="tag">💧 Group 4 IoT Prototype</p>
-                    <h1>Smart Water Monitoring and Alert System</h1>
-                    <p className="subtitle">
-                        A live React dashboard for abnormal water usage and water waste detection.
-                    </p>
-                </div>
-
-                <div className={health ? "connection online" : "connection offline"}>
-                    <span></span>
-                    {health ? "ONLINE" : "DISCONNECTED"}
-                </div>
-            </section>
-
-            <section className="summary">
-                <div className="summary-card">
-                    <span className="summary-icon water">🚰</span>
-                    <div>
-                        <p>Water Flow</p>
-                        <h2>{waterFlow ? "YES" : "NO"}</h2>
-                    </div>
-                </div>
-
-                <div className="summary-card">
-                    <span className="summary-icon human">🚶</span>
-                    <div>
-                        <p>Human Present</p>
-                        <h2>{humanPresent ? "YES" : "NO"}</h2>
-                    </div>
-                </div>
-
-                <div className="summary-card">
-                    <span className="summary-icon timer">⏱️</span>
-                    <div>
-                        <p>Running Duration</p>
-                        <h2>{runningDuration}s</h2>
-                    </div>
-                </div>
-
-                <div className="summary-card">
-                    <span className="summary-icon flow">🌊</span>
-                    <div>
-                        <p>Flow Rate</p>
-                        <h2>{Number(flowRate).toFixed(1)} L/min</h2>
-                    </div>
-                </div>
-
-                <div className={activeAlert ? "summary-card danger-card" : "summary-card"}>
-                    <span className="summary-icon alert">🚨</span>
-                    <div>
-                        <p>Active Alert</p>
-                        <h2>{activeAlert ? "YES" : "NO"}</h2>
-                    </div>
-                </div>
-            </section>
-
-            <section className="control-panel">
                 <div>
-                    <p className="section-label">Device Control</p>
-                    <h2>Live Dashboard Sync</h2>
-                    <p className="small-text">
-                        Device status: <strong>{deviceStatus}</strong> · Last seen: <strong>{lastSeen}</strong>
+                    <p className="mini-label">Group 4 IoT Prototype</p>
+                    <h1>Smart Hydro Alert</h1>
+                    <p className="hero-subtitle">
+                        Real-time water usage, local leak detection, user notification, LED output,
+                        and buzzer response in one dashboard.
                     </p>
                 </div>
 
-                <div className="control-actions">
-                    <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-                        <option value="device01">device01</option>
+                <div className="hero-actions">
+                    <div className={`health-pill ${health ? "online" : "offline"}`}>
+                        <span />
+                        {health ? "Backend Online" : "Backend Offline"}
+                    </div>
+
+                    <select
+                        value={selectedDevice}
+                        onChange={(event) => setSelectedDevice(event.target.value)}
+                    >
+                        {devices.length === 0 ? (
+                            <option value={DEFAULT_DEVICE_ID}>{DEFAULT_DEVICE_ID}</option>
+                        ) : (
+                            devices.map((device) => (
+                                <option key={device.device_id} value={device.device_id}>
+                                    {device.device_id}
+                                </option>
+                            ))
+                        )}
                     </select>
 
-                    <button onClick={() => syncDashboard(true)} disabled={syncing}>
-                        {syncing ? "🔄 Syncing..." : "🔄 Sync Dashboard"}
+                    <button
+                        type="button"
+                        onClick={() => loadDashboard({ showLoading: true })}
+                        disabled={loading}
+                    >
+                        {loading ? "Refreshing..." : "Refresh"}
                     </button>
                 </div>
-
-                <p className="updated">Last updated: {lastUpdated}</p>
             </section>
 
-            <section className="two-column">
-                <div className="panel">
-                    <p className="section-label">Project Overview</p>
-                    <h2>Abnormal Water Usage Logic</h2>
+            {error ? <div className="error-banner">{error}</div> : null}
+
+            <section className={`status-showcase ${meta.className}`}>
+                <div className="status-main">
+                    <div className="big-emoji">{meta.emoji}</div>
+
+                    <div>
+                        <span className="status-chip" style={{ backgroundColor: meta.color }}>
+                            {meta.label}
+                        </span>
+                        <h2>{meta.title}</h2>
+                        <p>{meta.message}</p>
+                    </div>
+                </div>
+
+                <div className="status-side">
+                    <div>
+                        <span>Last device message</span>
+                        <strong>{formatTime(latest.last_seen ?? latest.timestamp)}</strong>
+                    </div>
+                    <div>
+                        <span>Dashboard check</span>
+                        <strong>{formatTime(lastCheck)}</strong>
+                    </div>
+                    <div>
+                        <span>Current rule</span>
+                        <strong>{currentRule?.condition ?? "Waiting"}</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section className="grid four">
+                <SensorCard
+                    emoji="🚰"
+                    title="Flow Sensor"
+                    value={waterFlow ? "Flowing" : "No flow"}
+                    raw={`water_flow=${to01(waterFlow)}`}
+                    detail={`${Number(flowRate).toFixed(1)} L/min`}
+                    active={waterFlow}
+                />
+
+                <SensorCard
+                    emoji="🧍"
+                    title="Human Presence"
+                    value={humanPresent ? "Present" : "Not detected"}
+                    raw={`human_present=${to01(humanPresent)}`}
+                    detail="PIR / presence input"
+                    active={humanPresent}
+                />
+
+                <SensorCard
+                    emoji="💧"
+                    title="FC-37 Water Sensor"
+                    value={waterDetected ? "Water detected" : "Dry"}
+                    raw={`water_detected=${to01(waterDetected)}`}
+                    detail="Local leak / overflow input"
+                    active={waterDetected}
+                />
+
+                <SensorCard
+                    emoji="⏱️"
+                    title="Running Duration"
+                    value={`${duration}s`}
+                    raw={`alert=${to01(alert)}`}
+                    detail={`Alert threshold: ${ALERT_THRESHOLD}s`}
+                    active={duration >= ALERT_THRESHOLD}
+                />
+            </section>
+
+            <section className="grid three">
+                <OutputCard title="LED Output" value={meta.led}>
+                    <div className={`led-dot ${meta.ledClass}`} />
+                </OutputCard>
+
+                <OutputCard title="Buzzer Output" value={meta.buzzer}>
+                    <span className="small-note">Local physical warning</span>
+                </OutputCard>
+
+                <OutputCard title="Notify User" value={meta.notify}>
+                    <span className="small-note">
+                        Remote message only for ALERT and CRITICAL
+                    </span>
+                </OutputCard>
+            </section>
+
+            <section className="panel">
+                <div className="panel-header">
+                    <div>
+                        <p className="mini-label">No Hardware Demo Mode</p>
+                        <h2>Simulation Control</h2>
+                    </div>
                     <p>
-                        The ESP32 sends sensor readings to the MQTT broker. The backend checks
-                        whether water is running while no human is detected. If this situation
-                        continues for 300 seconds, the system records an abnormal water usage alert.
+                        Use Reset before each full demo path. Backend uses 1 real second = 10 system
+                        seconds for continuous abnormal water flow.
                     </p>
+                </div>
 
-                    <div className="logic-box">
-                        <div className={waterFlow ? "logic-active" : ""}>
-                            🚰 Water Flow = {waterFlow ? "YES" : "NO"}
+                <div className="scenario-grid">
+                    <button
+                        type="button"
+                        className="scenario-button scenario-normal"
+                        onClick={() => resetToNormal({ clearLogs: false })}
+                        disabled={Boolean(scenarioBusy)}
+                    >
+                        <span>↩️</span>
+                        <strong>Reset Normal</strong>
+                        <small>Return to no flow + no leak</small>
+                        {scenarioBusy === "RESET" ? <em>Resetting...</em> : null}
+                    </button>
+
+                    <button
+                        type="button"
+                        className="scenario-button scenario-normal"
+                        onClick={() => resetToNormal({ clearLogs: true })}
+                        disabled={Boolean(scenarioBusy)}
+                    >
+                        <span>🧹</span>
+                        <strong>Clear Demo</strong>
+                        <small>Reset normal and clear logs</small>
+                        {scenarioBusy === "CLEAR" ? <em>Clearing...</em> : null}
+                    </button>
+
+                    {SCENARIOS.map((scenario) => (
+                        <button
+                            key={scenario.key}
+                            type="button"
+                            className={`scenario-button scenario-${scenario.key.toLowerCase()}`}
+                            onClick={() => runScenario(scenario)}
+                            disabled={Boolean(scenarioBusy)}
+                        >
+                            <span>{scenario.emoji}</span>
+                            <strong>{scenario.title}</strong>
+                            <small>{scenario.subtitle}</small>
+                            {scenarioBusy === scenario.key ? <em>Sending...</em> : null}
+                        </button>
+                    ))}
+                </div>
+            </section>
+
+            <section className="panel">
+                <div className="panel-header">
+                    <div>
+                        <p className="mini-label">Decision Logic</p>
+                        <h2>Condition Rules</h2>
+                    </div>
+                    <p>The highlighted row is the rule currently triggered by the latest 0/1 payload.</p>
+                </div>
+
+                <div className="logic-table">
+                    <div className="logic-row table-head">
+                        <span>Condition</span>
+                        <span>Meaning</span>
+                        <span>Status</span>
+                        <span>LED</span>
+                        <span>Buzzer</span>
+                        <span>Notify</span>
+                    </div>
+
+                    {LOGIC_RULES.map((rule) => (
+                        <div
+                            key={rule.status}
+                            className={`logic-row ${rule.status === status ? "active" : ""}`}
+                        >
+                            <span>{rule.condition}</span>
+                            <span>{rule.meaning}</span>
+                            <span className="logic-status">{rule.status}</span>
+                            <span>{rule.led}</span>
+                            <span>{rule.buzzer}</span>
+                            <span>{rule.notify}</span>
                         </div>
-                        <div className={!humanPresent ? "logic-active" : ""}>
-                            🚶 Human Present = {humanPresent ? "YES" : "NO"}
+                    ))}
+                </div>
+            </section>
+
+            <section className="bottom-grid">
+                <div className="panel">
+                    <div className="panel-header compact">
+                        <div>
+                            <p className="mini-label">Recent Sensor Events</p>
+                            <h2>Device History</h2>
                         </div>
-                        <div className={runningDuration >= 300 ? "logic-active" : ""}>
-                            ⏱️ Duration = {runningDuration}s
-                        </div>
-                        <div className={activeAlert ? "alert-step" : ""}>
-                            🚨 {activeAlert ? "Alert Created" : "No Active Alert"}
-                        </div>
+                    </div>
+
+                    <div className="event-list">
+                        {displayHistory.length === 0 ? (
+                            <p className="empty">No sensor history yet. Press a demo button first.</p>
+                        ) : (
+                            displayHistory.map((item, index) => (
+                                <div key={`${item.timestamp}-${item.status}-${index}`} className="event-item">
+                                    <div>
+                                        <strong>{item.status ?? "UNKNOWN"}</strong>
+                                        <span>{formatDateTime(item.timestamp)}</span>
+                                    </div>
+                                    <code>
+                                        flow={to01(item.water_flow)} / human={to01(item.human_present)} /
+                                        water={to01(item.water_detected)} / alert={to01(item.alert)}
+                                    </code>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
 
                 <div className="panel">
-                    <p className="section-label">Demo Scenario</p>
-                    <h2>How the System Works</h2>
+                    <div className="panel-header compact">
+                        <div>
+                            <p className="mini-label">Notification Log</p>
+                            <h2>Alert History</h2>
+                        </div>
+                    </div>
 
-                    <div className="timeline">
-                        <div>
-                            <span>1</span>
-                            <p>🔌 ESP32 reads sensors</p>
-                        </div>
-                        <div>
-                            <span>2</span>
-                            <p>📡 MQTT sends live data</p>
-                        </div>
-                        <div>
-                            <span>3</span>
-                            <p>🖥️ Backend checks logic</p>
-                        </div>
-                        <div>
-                            <span>4</span>
-                            <p>📊 Dashboard updates automatically</p>
-                        </div>
+                    <div className="event-list">
+                        {alerts.length === 0 ? (
+                            <p className="empty">
+                                No ALERT or CRITICAL notification has been created yet.
+                            </p>
+                        ) : (
+                            alerts.map((item, index) => (
+                                <div key={`${item.timestamp}-${index}`} className="event-item alert-item">
+                                    <div>
+                                        <strong>{item.status ?? item.alert_type}</strong>
+                                        <span>{formatDateTime(item.timestamp)}</span>
+                                    </div>
+                                    <code>
+                                        strength={item.strength} / notified={to01(item.notified)}
+                                    </code>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </section>
 
-            <section className="panel">
-                <p className="section-label">System Architecture</p>
-                <h2>IoT Data Flow</h2>
+            <section className="panel raw-panel">
+                <button
+                    type="button"
+                    className="raw-toggle"
+                    onClick={() => setShowRaw((value) => !value)}
+                >
+                    {showRaw ? "Hide technical backend values" : "Show technical backend values"}
+                </button>
 
-                <div className="architecture">
-                    <div>🔌<strong>ESP32</strong></div>
-                    <span>→</span>
-                    <div>📡<strong>MQTT Broker</strong></div>
-                    <span>→</span>
-                    <div>🖥️<strong>FastAPI</strong></div>
-                    <span>→</span>
-                    <div>🗄️<strong>MongoDB</strong></div>
-                    <span>→</span>
-                    <div>📊<strong>React Dashboard</strong></div>
-                </div>
-            </section>
-
-            <section className="panel">
-                <p className="section-label">Alert History</p>
-                <h2>Recorded Abnormal Water Usage Events</h2>
-
-                {alerts.length === 0 ? (
-                    <div className="empty">
-                        ✅ No abnormal water usage has been detected yet.
-                    </div>
-                ) : (
-                    <div className="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Device</th>
-                                    <th>Type</th>
-                                    <th>Severity</th>
-                                    <th>Duration</th>
-                                    <th>Notified</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {alerts.map((a, index) => (
-                                    <tr key={index}>
-                                        <td>
-                                            {a.timestamp
-                                                ? new Date(a.timestamp * 1000).toLocaleString()
-                                                : "—"}
-                                        </td>
-                                        <td>{a.device_id}</td>
-                                        <td>{a.alert_type}</td>
-                                        <td>
-                                            <span className="badge">{a.strength}</span>
-                                        </td>
-                                        <td>{a.duration_sec}s</td>
-                                        <td>{a.notified ? "Yes" : "No"}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                {showRaw ? (
+                    <pre>
+                        {JSON.stringify(
+                            {
+                                selectedDevice,
+                                latest,
+                                derived_status: status,
+                                led: meta.led,
+                                buzzer: meta.buzzer,
+                                notify_user: meta.notify,
+                                time_scale_rule: "1 real second = 10 system seconds",
+                            },
+                            null,
+                            2,
+                        )}
+                    </pre>
+                ) : null}
             </section>
         </main>
     );
