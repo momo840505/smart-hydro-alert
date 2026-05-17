@@ -15,8 +15,9 @@ The current prototype supports:
 - critical leak / overflow detection
 - LED output state
 - buzzer output state
-- optional Telegram user notification
+- optional user notification
 - dashboard simulation without physical hardware
+- estimated water waste for report and demo purposes
 
 ---
 
@@ -73,57 +74,51 @@ WARNING → ALERT
 IoT-group4/
 ├── app/
 │   ├── api/
-│   │   ├── alerts.py                 # Alert history API
-│   │   ├── devices.py                # Device live, history, simulate, reset APIs
-│   │   └── websocket.py              # WebSocket route for live device updates
-│   │
+│   │   ├── alerts.py
+│   │   ├── devices.py
+│   │   └── websocket.py
 │   ├── core/
-│   │   └── config.py                 # App settings from environment variables
-│   │
+│   │   └── config.py
 │   ├── database/
-│   │   ├── collections.py            # MongoDB collection names
-│   │   └── mongodb.py                # MongoDB / Beanie setup
-│   │
+│   │   ├── collections.py
+│   │   └── mongodb.py
 │   ├── models/
-│   │   ├── alert.py                  # Alert document model
-│   │   ├── device.py                 # Device document model
-│   │   ├── sensor.py                 # Sensor history document model
-│   │   └── payloads.py               # MQTT/API payload schemas and status logic
-│   │
+│   │   ├── alert.py
+│   │   ├── device.py
+│   │   ├── sensor.py
+│   │   └── payloads.py
 │   ├── mqtt/
-│   │   ├── client.py                 # MQTT subscriber client
-│   │   ├── handlers.py               # MQTT message validation and routing
-│   │   └── topics.py                 # MQTT topic parsing helpers
-│   │
+│   │   ├── client.py
+│   │   ├── handlers.py
+│   │   └── topics.py
 │   ├── services/
-│   │   ├── alert_service.py          # ALERT / CRITICAL creation and duplicate prevention
-│   │   ├── device_service.py         # Device state, backend timer, reset logic
-│   │   ├── notification_service.py   # Telegram notification support
-│   │   ├── sensor_service.py         # Sensor history storage
-│   │   └── websocket_manager.py      # WebSocket connection manager
-│   │
-│   └── main.py                       # FastAPI app entry point
+│   │   ├── alert_service.py
+│   │   ├── device_service.py
+│   │   ├── notification_service.py
+│   │   ├── sensor_service.py
+│   │   └── websocket_manager.py
+│   └── main.py
 │
 ├── frontend-react/
 │   ├── src/
-│   │   ├── App.jsx                   # Main React dashboard
-│   │   ├── App.css                   # Dashboard styles
-│   │   ├── index.css                 # Global styles
-│   │   └── main.jsx                  # React entry point
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
 │
-├── frontend/                         # Legacy static frontend
+├── frontend/
 │   └── index.html
 │
 ├── simulator/
-│   ├── __main__.py                   # CLI simulator entry
+│   ├── __main__.py
 │   ├── config.py
 │   ├── publisher.py
 │   └── scenarios.py
 │
 ├── docker/
-│   └── mosquitto.conf                # MQTT broker config
+│   └── mosquitto.conf
 │
 ├── tests/
 │   ├── test_alert_logic.py
@@ -146,8 +141,6 @@ IoT-group4/
 ## Sensor Payload Format
 
 The backend uses `0/1` values for sensor data.
-
-This is the format used by the code and dashboard.
 
 | Field | 0 means | 1 means |
 |---|---|---|
@@ -182,7 +175,7 @@ Example MQTT payload:
   "alert": 1,
   "status": "CRITICAL",
   "running_duration_sec": 0,
-  "flow_rate_lpm": 6.1
+  "flow_rate_lpm": 0.4
 }
 ```
 
@@ -205,6 +198,77 @@ The backend creates remote user notifications only for:
 ALERT
 CRITICAL
 ```
+
+---
+
+## Flow Rate and Estimated Water Waste
+
+The YF-S201 flow sensor provides pulse-based water flow information.
+
+The common calculation is:
+
+```text
+Flow rate (L/min) = pulse frequency / 7.5
+```
+
+For this prototype, the flow rate is used only as an estimate for reporting and dashboard display. It is not used as the main alert trigger.
+
+The dashboard estimates water waste using:
+
+```text
+Estimated water waste (L) = flow rate (L/min) × duration (min)
+```
+
+Since the backend stores duration in seconds, the calculation is:
+
+```text
+Estimated water waste (L) = flow_rate_lpm × running_duration_sec / 60
+```
+
+Example:
+
+```text
+flow_rate_lpm = 0.40 L/min
+running_duration_sec = 300 sec = 5 min
+
+Estimated water waste = 0.40 × 5 = 2.00 L
+```
+
+Important:
+
+```text
+The estimated water waste value is for demo and report purposes.
+The main alert logic does not use a fixed flow-rate threshold.
+The main alert logic uses water_flow, human_present, water_detected, and duration.
+```
+
+This design was chosen because the prototype YF-S201 tap test measured around `0.40 L/min`. Therefore, using a fixed threshold such as `0.50 L/min` may not trigger reliably in the prototype.
+
+---
+
+## Device History and Alert History
+
+The dashboard uses human-readable history instead of raw backend values.
+
+Device History shows recent sensor events, for example:
+
+```text
+Room returned to normal
+Normal water usage detected
+Unattended water flow detected
+Forgotten tap detected
+Local water contact detected
+Critical leak condition detected
+```
+
+Alert History shows generated alert events, for example:
+
+```text
+Forgotten tap alert → Notification sent
+Critical leak alert → Buzzer and notification activated
+```
+
+Raw `0/1` backend values are still available in the technical backend values section.
 
 ---
 
@@ -257,30 +321,28 @@ home/bathroom/device01/alert
 
 ## Prerequisites
 
-Recommended setup:
-
 | Tool | Purpose |
 |---|---|
-| Docker Desktop | Runs MongoDB, Mosquitto, backend, and optional frontend container |
+| Docker Desktop | Runs MongoDB, Mosquitto, and backend |
 | Node.js + npm | Runs the React/Vite dashboard locally |
 | Git | Version control |
 
 ---
 
-## Quickstart with Docker Backend + React Dev Server
+## Quickstart for Demo
 
-This is the recommended setup for development and demo.
+The recommended demo setup uses Docker for the backend services and Vite for the React dashboard.
 
 ### 1. Start backend services
 
-From the project root:
+Open PowerShell from the project root:
 
 ```powershell
 cd C:\Users\momo8\Documents\GitHub\personal-clone\IoT-group4
 docker compose up -d --build mongo mosquitto backend
 ```
 
-Check running containers:
+Check that the backend services are running:
 
 ```powershell
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -298,7 +360,7 @@ Backend URLs:
 
 ```text
 Backend API: http://localhost:8000
-Swagger docs: http://localhost:8000/docs
+Swagger API docs: http://localhost:8000/docs
 Health check: http://localhost:8000/health
 ```
 
@@ -312,56 +374,19 @@ npm install
 npm run dev
 ```
 
-Then open the URL shown by Vite.
-
-Usually:
+Open the dashboard:
 
 ```text
 http://localhost:5173/
 ```
 
-If port 5173 is already in use, Vite may show another port, for example:
+This project uses port `5173` for the React dashboard.
 
-```text
-http://localhost:5174/
-```
-
-Use the port shown in the terminal.
+If port `5173` is already in use, close the previous Vite terminal or stop the process using that port before running the dashboard again.
 
 ---
 
-## Docker Frontend Option
-
-The `docker-compose.yml` can also serve the React build through Nginx on port `3000`.
-
-Build the React frontend first:
-
-```powershell
-cd frontend-react
-npm install
-npm run build
-cd ..
-```
-
-Then start the frontend container:
-
-```powershell
-docker compose up -d --build frontend
-```
-
-Open:
-
-```text
-http://localhost:3000/
-```
-
-For active development, use the Vite dev server on `5173` or `5174`.
-
-For Docker demo serving, use `3000`.
-
----
-
-## React Dashboard Features
+## Dashboard Features
 
 The React dashboard shows:
 
@@ -375,11 +400,12 @@ The React dashboard shows:
 - LED output
 - buzzer output
 - notify user status
+- estimated water waste
 - simulation scenario buttons
 - reset normal button
 - clear demo button
-- compact device history
-- alert history
+- human-readable device history
+- human-readable alert history
 - technical backend values
 
 Dashboard status colours:
@@ -395,32 +421,156 @@ Dashboard status colours:
 
 ---
 
-## Dashboard Demo Buttons
+## Dashboard Testing Steps
 
-The dashboard includes built-in scenario buttons.
+### Step 1: Open the dashboard
 
-| Button | Expected result |
-|---|---|
-| `Normal` | Green normal state |
-| `Normal Flow` | Blue normal water usage |
-| `Warning` | Yellow suspicious water usage |
-| `Alert` | Red forgotten tap risk |
-| `Leak` | White local water detection |
-| `Critical` | Red flashing critical risk |
-| `Reset Normal` | Return to normal state |
-| `Clear Demo` | Reset state and clear demo logs |
+Open:
 
-Use `Reset Normal` before a simple demo.
+```text
+http://localhost:5173/
+```
 
-Use `Clear Demo` before recording or presenting a clean full demo.
+Check that the dashboard shows:
+
+```text
+Backend Online
+```
+
+### Step 2: Clear previous demo data
+
+Click:
+
+```text
+Clear Demo
+```
+
+Expected result:
+
+```text
+The device state returns to normal.
+Old device history and alert history are cleared.
+```
+
+### Step 3: Test normal room condition
+
+Click:
+
+```text
+Normal
+```
+
+Expected result:
+
+```text
+Status: NORMAL
+LED: Green
+Buzzer: Off
+Notify User: No
+Estimated Water Waste: 0.00 L
+```
+
+### Step 4: Test normal water usage
+
+Click:
+
+```text
+Normal Flow
+```
+
+Expected result:
+
+```text
+Status: NORMAL_FLOW
+LED: Blue
+Buzzer: Off
+Notify User: No
+Device History: Normal water usage detected
+```
+
+### Step 5: Test unattended water flow
+
+Click:
+
+```text
+Warning
+```
+
+Expected result:
+
+```text
+Status: WARNING
+LED: Yellow
+Buzzer: Off
+Notify User: No
+Device History: Unattended water flow detected
+Estimated Water Waste: calculated from flow rate and duration
+```
+
+### Step 6: Test forgotten tap alert
+
+Click:
+
+```text
+Alert
+```
+
+Expected result:
+
+```text
+Status: ALERT
+LED: Red
+Buzzer: Intermittent
+Notify User: Yes
+Device History: Forgotten tap detected
+Alert History: Forgotten tap alert
+```
+
+### Step 7: Test local water contact
+
+Click:
+
+```text
+Leak
+```
+
+Expected result:
+
+```text
+Status: LEAK
+LED: White
+Buzzer: Slow beep
+Notify User: No
+Device History: Local water contact detected
+```
+
+### Step 8: Test critical leak / overflow
+
+Click:
+
+```text
+Critical
+```
+
+Expected result:
+
+```text
+Status: CRITICAL
+LED: Red flashing
+Buzzer: Continuous
+Notify User: Yes
+Device History: Critical leak condition detected
+Alert History: Critical leak alert
+```
 
 ---
 
-## PowerShell Dynamic Demo Tests
+## Dynamic Demo Test with PowerShell
 
-These tests send repeated backend simulation payloads. They are useful when no physical sensors are connected.
+The dashboard buttons are useful for quick testing.  
+For a more realistic demo, send repeated sensor values through the backend simulation API.
 
-Open a new PowerShell terminal from the project root.
+Open a third PowerShell terminal from the project root.
 
 ### Helper functions
 
@@ -452,12 +602,6 @@ function Send-Sensor {
         -Body $body
 }
 
-function Reset-Normal {
-    Invoke-RestMethod `
-        -Method Post `
-        -Uri "$base/api/devices/$device/reset?clear_logs=0"
-}
-
 function Clear-Demo {
     Invoke-RestMethod `
         -Method Post `
@@ -465,128 +609,13 @@ function Clear-Demo {
 }
 ```
 
----
+### Full demo path
 
-### A. Normal usage path: green → blue → green
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 8; $i++) {
-    Send-Sensor 1 1 0 3.2
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected dashboard result:
+This demonstrates:
 
 ```text
-NORMAL → NORMAL_FLOW → NORMAL
+NORMAL → NORMAL_FLOW → WARNING → ALERT → CRITICAL
 ```
-
----
-
-### B. Forgotten tap path: green → yellow → red
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 35; $i++) {
-    Send-Sensor 1 0 0 4.5
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected dashboard result:
-
-```text
-NORMAL → WARNING → ALERT
-```
-
-The backend applies:
-
-```text
-1 real second = 10 system seconds
-```
-
-So after around 30 real seconds, the system reaches 300 system seconds and changes to `ALERT`.
-
----
-
-### C. Local leak path: green → white → green
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected dashboard result:
-
-```text
-NORMAL → LEAK → NORMAL
-```
-
----
-
-### D. Local leak becomes critical: green → white → red flashing
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 8; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 1 0 1 6.1
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected dashboard result:
-
-```text
-NORMAL → LEAK → CRITICAL
-```
-
----
-
-### E. Full demo path: green → blue → yellow → red → red flashing
 
 ```powershell
 Clear-Demo
@@ -597,56 +626,141 @@ for ($i = 1; $i -le 3; $i++) {
 }
 
 for ($i = 1; $i -le 6; $i++) {
-    Send-Sensor 1 1 0 3.2
+    Send-Sensor 1 1 0 0.4
     Start-Sleep -Seconds 1
 }
 
 for ($i = 1; $i -le 35; $i++) {
-    Send-Sensor 1 0 0 4.5
+    Send-Sensor 1 0 0 0.4
     Start-Sleep -Seconds 1
 }
 
 for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 1 0 1 6.1
+    Send-Sensor 1 0 1 0.4
     Start-Sleep -Seconds 1
 }
 ```
 
-Expected dashboard result:
+Expected result:
 
 ```text
-NORMAL → NORMAL_FLOW → WARNING → ALERT → CRITICAL
+Green → Blue → Yellow → Red → Red flashing
 ```
 
----
-
-## MQTT Simulator
-
-The `simulator/` package mocks an ESP32 publishing MQTT messages.
-
-Run simulator commands from the project root.
-
-```powershell
-docker compose --profile tools run --rm simulator leak --device-id device01 --duration 310 --tick 0.1
-```
-
-The `--tick` value controls the wall-clock interval between messages.
-
-For older simulator scenarios:
-
-```text
---tick 0.1
-```
-
-means one simulated second is sent every 0.1 real seconds.
-
-The newer backend demo logic also supports:
+The system uses:
 
 ```text
 1 real second = 10 system seconds
 ```
 
-for continuous abnormal flow when real or simulated sensor messages arrive repeatedly.
+So around 30 real seconds of unattended flow becomes 300 system seconds and triggers `ALERT`.
+
+---
+
+## Other Dynamic Test Scenarios
+
+### Normal usage path
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 8; $i++) {
+    Send-Sensor 1 1 0 0.4
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected:
+
+```text
+NORMAL → NORMAL_FLOW → NORMAL
+```
+
+### Forgotten tap path
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 35; $i++) {
+    Send-Sensor 1 0 0 0.4
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected:
+
+```text
+NORMAL → WARNING → ALERT
+```
+
+### Local leak path
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected:
+
+```text
+NORMAL → LEAK → NORMAL
+```
+
+### Local leak becomes critical
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 8; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 1 0 1 0.4
+    Start-Sleep -Seconds 1
+}
+```
+
+Expected:
+
+```text
+NORMAL → LEAK → CRITICAL
+```
 
 ---
 
@@ -666,7 +780,7 @@ $payload = @{
     alert = 0
     status = "NORMAL_FLOW"
     running_duration_sec = 0
-    flow_rate_lpm = 3.2
+    flow_rate_lpm = 0.4
 } | ConvertTo-Json -Compress
 
 docker exec smartwater-mosquitto mosquitto_pub `
@@ -687,7 +801,7 @@ $payload = @{
     alert = 1
     status = "CRITICAL"
     running_duration_sec = 0
-    flow_rate_lpm = 6.1
+    flow_rate_lpm = 0.4
 } | ConvertTo-Json -Compress
 
 docker exec smartwater-mosquitto mosquitto_pub `
@@ -698,16 +812,16 @@ docker exec smartwater-mosquitto mosquitto_pub `
 
 ---
 
-## Telegram Notification
+## Notification
 
-The backend can send Telegram notifications for:
+The backend can send notifications for:
 
 ```text
 ALERT
 CRITICAL
 ```
 
-Do not hard-code Telegram credentials in `docker-compose.yml`.
+Do not hard-code notification credentials in `docker-compose.yml`.
 
 Use environment variables instead.
 
@@ -724,7 +838,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
-Leave them empty if Telegram notification is not needed.
+Leave them empty if notification is not needed.
 
 Important:
 
@@ -794,12 +908,18 @@ Format code:
 black app tests
 ```
 
-Build React dashboard:
+Run React dashboard:
 
 ```powershell
 cd frontend-react
-npm run build
-cd ..
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173/
 ```
 
 ---

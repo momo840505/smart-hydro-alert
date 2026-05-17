@@ -33,7 +33,7 @@ const SCENARIOS = [
             alert: 0,
             status: "NORMAL_FLOW",
             running_duration_sec: 0,
-            flow_rate_lpm: 3.2,
+            flow_rate_lpm: 0.4,
         },
     },
     {
@@ -48,7 +48,7 @@ const SCENARIOS = [
             alert: 0,
             status: "WARNING",
             running_duration_sec: 120,
-            flow_rate_lpm: 3.8,
+            flow_rate_lpm: 0.4,
         },
     },
     {
@@ -63,7 +63,7 @@ const SCENARIOS = [
             alert: 1,
             status: "ALERT",
             running_duration_sec: 310,
-            flow_rate_lpm: 4.6,
+            flow_rate_lpm: 0.4,
         },
     },
     {
@@ -93,7 +93,7 @@ const SCENARIOS = [
             alert: 1,
             status: "CRITICAL",
             running_duration_sec: 330,
-            flow_rate_lpm: 6.1,
+            flow_rate_lpm: 0.4,
         },
     },
 ];
@@ -217,7 +217,7 @@ function getStatusMeta(status) {
             className: "normal",
             emoji: "🌿",
             title: "Everything looks good",
-            message: "No water flow and no water contact are detected. The system is idle and safe.",
+            message: "No water flow and no water contact are detected. The room is idle and safe.",
             led: "Green",
             ledClass: "led-green",
             buzzer: "Off",
@@ -229,7 +229,7 @@ function getStatusMeta(status) {
             className: "normal-flow",
             emoji: "🚰",
             title: "Normal water usage",
-            message: "Water is flowing while a person is nearby, so this is treated as normal use.",
+            message: "Water is flowing while a person is present, so this is treated as normal use.",
             led: "Blue",
             ledClass: "led-blue",
             buzzer: "Off",
@@ -240,8 +240,8 @@ function getStatusMeta(status) {
             label: "WARNING",
             className: "warning",
             emoji: "🌤️",
-            title: "Suspicious water usage",
-            message: "Water is flowing with no human nearby, but it has not reached the alert time limit yet.",
+            title: "Unattended water flow",
+            message: "Water is flowing while no person is detected. The system is monitoring the duration.",
             led: "Yellow",
             ledClass: "led-yellow",
             buzzer: "Off",
@@ -253,7 +253,7 @@ function getStatusMeta(status) {
             className: "alert",
             emoji: "🚨",
             title: "Forgotten tap risk",
-            message: "Water has been running without human presence for too long. The user should be notified.",
+            message: "Water has been running without human presence for too long. User notification is required.",
             led: "Red",
             ledClass: "led-red",
             buzzer: "Intermittent",
@@ -264,8 +264,8 @@ function getStatusMeta(status) {
             label: "LEAK",
             className: "leak",
             emoji: "💧",
-            title: "Local water detected",
-            message: "The FC-37 sensor detected water contact while the flow sensor reports no flow.",
+            title: "Local water contact detected",
+            message: "The FC-37 sensor detected water contact while no flow is detected.",
             led: "White",
             ledClass: "led-white",
             buzzer: "Slow beep",
@@ -302,6 +302,105 @@ function getStatusMeta(status) {
     );
 }
 
+function getEventMessage(item) {
+    const status = item.status;
+
+    if (status === "NORMAL") {
+        return {
+            event: "Room returned to normal",
+            summary: "No water flow or water contact detected",
+            action: "Monitoring continued",
+        };
+    }
+
+    if (status === "NORMAL_FLOW") {
+        return {
+            event: "Normal water usage detected",
+            summary: "Water is flowing while a person is present",
+            action: "No action required",
+        };
+    }
+
+    if (status === "WARNING") {
+        return {
+            event: "Unattended water flow detected",
+            summary: "Water is flowing while no person is detected",
+            action: "Monitoring duration",
+        };
+    }
+
+    if (status === "ALERT") {
+        return {
+            event: "Forgotten tap detected",
+            summary: "Unattended water flow exceeded the time threshold",
+            action: "Buzzer activated and notification sent",
+        };
+    }
+
+    if (status === "LEAK") {
+        return {
+            event: "Local water contact detected",
+            summary: "The FC-37 water sensor detected water near the monitored area",
+            action: "Slow beep activated",
+        };
+    }
+
+    if (status === "CRITICAL") {
+        return {
+            event: "Critical leak condition detected",
+            summary: "Water flow and local water contact are both detected",
+            action: "Continuous buzzer and notification sent",
+        };
+    }
+
+    return {
+        event: "Unknown device event",
+        summary: "Sensor values require checking",
+        action: "Review technical backend values",
+    };
+}
+
+function getAlertMessage(item) {
+    const status = item.status ?? item.alert_type;
+
+    if (status === "ALERT") {
+        return {
+            alert: "Forgotten tap alert",
+            detail: "Unattended water flow reached the alert threshold",
+            action: item.notified ? "Notification sent" : "Alert recorded",
+        };
+    }
+
+    if (status === "CRITICAL") {
+        return {
+            alert: "Critical leak alert",
+            detail: "Water flow and local water contact were detected together",
+            action: item.notified ? "Buzzer and notification activated" : "Critical alert recorded",
+        };
+    }
+
+    return {
+        alert: "System alert",
+        detail: "An alert event was generated",
+        action: item.notified ? "Notification sent" : "Alert recorded",
+    };
+}
+
+function shouldEstimateWaste(status) {
+    return status === "WARNING" || status === "ALERT" || status === "CRITICAL";
+}
+
+function calculateEstimatedWasteLitres(status, flowRateLpm, durationSec) {
+    const safeFlowRate = Number(flowRateLpm || 0);
+    const safeDuration = Number(durationSec || 0);
+
+    if (!shouldEstimateWaste(status) || safeFlowRate <= 0 || safeDuration <= 0) {
+        return 0;
+    }
+
+    return safeFlowRate * (safeDuration / 60);
+}
+
 function SensorCard({ emoji, title, value, raw, detail, active }) {
     return (
         <article className={`sensor-card ${active ? "active" : ""}`}>
@@ -322,6 +421,16 @@ function OutputCard({ title, value, children }) {
             <p>{title}</p>
             <h3>{value}</h3>
             {children}
+        </article>
+    );
+}
+
+function EstimateCard({ title, value, detail }) {
+    return (
+        <article className="estimate-card">
+            <p>{title}</p>
+            <h3>{value}</h3>
+            <span>{detail}</span>
         </article>
     );
 }
@@ -416,7 +525,7 @@ function App() {
     const waterDetected = toBool(latest.water_detected);
     const alert = toBool(latest.alert);
     const duration = Number(latest.running_duration_sec ?? 0);
-    const flowRate = latest.flow_rate_lpm ?? 0;
+    const flowRate = Number(latest.flow_rate_lpm ?? 0);
 
     const status = deriveStatus(
         waterFlow,
@@ -429,6 +538,9 @@ function App() {
     const meta = getStatusMeta(status);
     const currentRule = LOGIC_RULES.find((rule) => rule.status === status);
     const displayHistory = compactHistory(history).slice(0, 5);
+
+    const estimatedWaste = calculateEstimatedWasteLitres(status, flowRate, duration);
+    const durationMinutes = duration / 60;
 
     async function runScenario(scenario) {
         setScenarioBusy(scenario.key);
@@ -572,7 +684,7 @@ function App() {
                     title="Flow Sensor"
                     value={waterFlow ? "Flowing" : "No flow"}
                     raw={`water_flow=${to01(waterFlow)}`}
-                    detail={`${Number(flowRate).toFixed(1)} L/min`}
+                    detail={`${flowRate.toFixed(2)} L/min`}
                     active={waterFlow}
                 />
 
@@ -581,7 +693,7 @@ function App() {
                     title="Human Presence"
                     value={humanPresent ? "Present" : "Not detected"}
                     raw={`human_present=${to01(humanPresent)}`}
-                    detail="PIR / presence input"
+                    detail="LD2410C presence input"
                     active={humanPresent}
                 />
 
@@ -618,6 +730,45 @@ function App() {
                         Remote message only for ALERT and CRITICAL
                     </span>
                 </OutputCard>
+            </section>
+
+            <section className="panel estimate-panel">
+                <div className="panel-header">
+                    <div>
+                        <p className="mini-label">Water Usage Estimate</p>
+                        <h2>Estimated Water Waste</h2>
+                    </div>
+                    <p>
+                        This value is for demo and report purposes. The alert decision still uses
+                        0/1 sensor states and duration, not a fixed flow-rate threshold.
+                    </p>
+                </div>
+
+                <div className="estimate-grid">
+                    <EstimateCard
+                        title="Flow rate"
+                        value={`${flowRate.toFixed(2)} L/min`}
+                        detail="Estimated from YF-S201 pulse frequency"
+                    />
+
+                    <EstimateCard
+                        title="System duration"
+                        value={`${duration}s`}
+                        detail={`${durationMinutes.toFixed(2)} min used in the estimate`}
+                    />
+
+                    <EstimateCard
+                        title="Estimated water waste"
+                        value={`${estimatedWaste.toFixed(2)} L`}
+                        detail="Flow rate × system duration"
+                    />
+                </div>
+
+                <div className="estimate-note">
+                    <strong>Formula:</strong> Water wasted = flow rate × duration / 60. The YF-S201
+                    flow rate is used as an estimate only. The main alert logic is still based on
+                    water flow state, human presence, water detection, and duration.
+                </div>
             </section>
 
             <section className="panel">
@@ -722,18 +873,23 @@ function App() {
                         {displayHistory.length === 0 ? (
                             <p className="empty">No sensor history yet. Press a demo button first.</p>
                         ) : (
-                            displayHistory.map((item, index) => (
-                                <div key={`${item.timestamp}-${item.status}-${index}`} className="event-item">
-                                    <div>
-                                        <strong>{item.status ?? "UNKNOWN"}</strong>
-                                        <span>{formatDateTime(item.timestamp)}</span>
+                            displayHistory.map((item, index) => {
+                                const message = getEventMessage(item);
+
+                                return (
+                                    <div
+                                        key={`${item.timestamp}-${item.status}-${index}`}
+                                        className="event-item readable-event"
+                                    >
+                                        <div className="event-main">
+                                            <strong>{message.event}</strong>
+                                            <span>{formatDateTime(item.timestamp)}</span>
+                                            <p>{message.summary}</p>
+                                        </div>
+                                        <code>{message.action}</code>
                                     </div>
-                                    <code>
-                                        flow={to01(item.water_flow)} / human={to01(item.human_present)} /
-                                        water={to01(item.water_detected)} / alert={to01(item.alert)}
-                                    </code>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>
@@ -752,17 +908,20 @@ function App() {
                                 No ALERT or CRITICAL notification has been created yet.
                             </p>
                         ) : (
-                            alerts.map((item, index) => (
-                                <div key={`${item.timestamp}-${index}`} className="event-item alert-item">
-                                    <div>
-                                        <strong>{item.status ?? item.alert_type}</strong>
-                                        <span>{formatDateTime(item.timestamp)}</span>
+                            alerts.map((item, index) => {
+                                const message = getAlertMessage(item);
+
+                                return (
+                                    <div key={`${item.timestamp}-${index}`} className="event-item alert-item">
+                                        <div className="event-main">
+                                            <strong>{message.alert}</strong>
+                                            <span>{formatDateTime(item.timestamp)}</span>
+                                            <p>{message.detail}</p>
+                                        </div>
+                                        <code>{message.action}</code>
                                     </div>
-                                    <code>
-                                        strength={item.strength} / notified={to01(item.notified)}
-                                    </code>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>
@@ -787,6 +946,11 @@ function App() {
                                 led: meta.led,
                                 buzzer: meta.buzzer,
                                 notify_user: meta.notify,
+                                flow_rate_lpm: flowRate,
+                                system_duration_sec: duration,
+                                estimated_water_waste_litres: Number(estimatedWaste.toFixed(2)),
+                                formula:
+                                    "estimated_water_waste = flow_rate_lpm * (running_duration_sec / 60)",
                                 time_scale_rule: "1 real second = 10 system seconds",
                             },
                             null,
