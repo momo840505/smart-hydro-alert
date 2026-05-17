@@ -482,46 +482,96 @@ button:disabled {
         line-height: 1.6;
     }
 
+.estimate-panel {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(239, 251, 255, 0.78)), var(--panel);
+}
+
+.estimate-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.estimate-card {
+    min-height: 132px;
+    padding: 20px;
+    border-radius: 26px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    box-shadow: 0 12px 30px rgba(53, 102, 139, 0.1);
+}
+
+    .estimate-card p {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 900;
+    }
+
+    .estimate-card h3 {
+        margin: 0 0 10px;
+        color: var(--text);
+        font-size: 26px;
+        letter-spacing: -0.8px;
+    }
+
+    .estimate-card span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+.estimate-note {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    color: #475569;
+    background: rgba(241, 245, 249, 0.76);
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    line-height: 1.55;
+}
+
 .scenario-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 13px;
+    grid-template-columns: repeat(4, minmax(190px, 1fr));
+    gap: 16px;
 }
 
 .scenario-button {
-    min-height: 144px;
-    padding: 18px 14px;
-    border-radius: 26px;
+    min-height: 176px;
+    padding: 22px 18px;
+    border-radius: 28px;
     cursor: pointer;
     text-align: left;
     color: #17324d;
-    background: rgba(255, 255, 255, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.86);
-    box-shadow: 0 12px 30px rgba(53, 102, 139, 0.12);
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 14px 34px rgba(53, 102, 139, 0.13);
     transition: 0.2s ease;
 }
 
     .scenario-button span {
         display: block;
-        margin-bottom: 12px;
-        font-size: 34px;
+        margin-bottom: 16px;
+        font-size: 40px;
     }
 
     .scenario-button strong {
         display: block;
-        margin-bottom: 7px;
-        font-size: 17px;
+        margin-bottom: 8px;
+        font-size: 18px;
     }
 
     .scenario-button small {
         display: block;
         color: var(--muted);
-        line-height: 1.35;
+        font-size: 14px;
+        line-height: 1.38;
     }
 
     .scenario-button em {
         display: block;
-        margin-top: 10px;
+        margin-top: 12px;
         color: #0284c7;
         font-size: 12px;
         font-style: normal;
@@ -609,7 +659,7 @@ button:disabled {
 .event-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     gap: 14px;
     padding: 14px;
     border-radius: 20px;
@@ -634,6 +684,38 @@ button:disabled {
         color: #334155;
         font-size: 12px;
     }
+
+.event-main {
+    min-width: 0;
+}
+
+    .event-main strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text);
+        font-size: 17px;
+    }
+
+    .event-main span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+    }
+
+    .event-main p {
+        margin: 8px 0 0;
+        color: #52697d;
+        font-size: 14px;
+        line-height: 1.45;
+    }
+
+.readable-event code,
+.alert-item code {
+    max-width: 280px;
+    white-space: normal;
+    text-align: right;
+    line-height: 1.45;
+}
 
 .alert-item {
     border-color: rgba(244, 63, 94, 0.22);
@@ -665,13 +747,6 @@ button:disabled {
 }
 
 @media (max-width: 1180px) {
-    .hero,
-    .status-showcase,
-    .panel-header,
-    .bottom-grid {
-        grid-template-columns: 1fr;
-    }
-
     .hero {
         flex-direction: column;
     }
@@ -680,9 +755,19 @@ button:disabled {
         justify-content: flex-start;
     }
 
+    .status-showcase,
+    .bottom-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .panel-header {
+        flex-direction: column;
+    }
+
     .grid.four,
     .grid.three,
-    .scenario-grid {
+    .scenario-grid,
+    .estimate-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -693,6 +778,11 @@ button:disabled {
         .logic-row.table-head {
             display: none;
         }
+
+    .readable-event code,
+    .alert-item code {
+        text-align: left;
+    }
 }
 
 @media (max-width: 680px) {
@@ -703,7 +793,8 @@ button:disabled {
 
     .grid.four,
     .grid.three,
-    .scenario-grid {
+    .scenario-grid,
+    .estimate-grid {
         grid-template-columns: 1fr;
     }
 
@@ -719,7 +810,6 @@ button:disabled {
     }
 
     .event-item {
-        align-items: flex-start;
         flex-direction: column;
     }
 }
