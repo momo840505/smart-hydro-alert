@@ -4,6 +4,8 @@ import "./App.css";
 const API_BASE = "http://localhost:8000";
 const DEFAULT_DEVICE_ID = "device01";
 const ALERT_THRESHOLD = 300;
+const TIME_SCALE = 10;
+const MAX_HISTORY_STEP_SECONDS = 3;
 
 const SCENARIOS = [
     {
@@ -33,7 +35,7 @@ const SCENARIOS = [
             alert: 0,
             status: "NORMAL_FLOW",
             running_duration_sec: 0,
-            flow_rate_lpm: 0.4,
+            flow_rate_lpm: 0.2,
         },
     },
     {
@@ -48,7 +50,7 @@ const SCENARIOS = [
             alert: 0,
             status: "WARNING",
             running_duration_sec: 120,
-            flow_rate_lpm: 0.4,
+            flow_rate_lpm: 0.3,
         },
     },
     {
@@ -92,7 +94,7 @@ const SCENARIOS = [
             water_detected: 1,
             alert: 1,
             status: "CRITICAL",
-            running_duration_sec: 330,
+            running_duration_sec: 0,
             flow_rate_lpm: 0.4,
         },
     },
@@ -134,7 +136,7 @@ const LOGIC_RULES = [
     {
         status: "LEAK",
         condition: "FC-37 detects water only",
-        meaning: "Possible local leak / overflow",
+        meaning: "Possible local leak / low-flow leak",
         led: "White",
         buzzer: "Slow beep",
         notify: "No",
@@ -198,6 +200,19 @@ function formatDateTime(value) {
         second: "2-digit",
         hour12: false,
     });
+}
+
+function formatDurationSeconds(seconds) {
+    const safeSeconds = Math.max(0, Math.round(Number(seconds || 0)));
+
+    if (safeSeconds < 60) {
+        return `${safeSeconds}s`;
+    }
+
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainingSeconds = safeSeconds % 60;
+
+    return `${minutes}m ${remainingSeconds}s`;
 }
 
 function deriveStatus(waterFlow, humanPresent, waterDetected, duration, backendStatus) {
@@ -265,7 +280,8 @@ function getStatusMeta(status) {
             className: "leak",
             emoji: "💧",
             title: "Local water contact detected",
-            message: "The FC-37 sensor detected water contact while no flow is detected.",
+            message:
+                "The FC-37 sensor detected water contact. This may be local spillage, standing water on the sensor, or a low-flow leak below the YF-S201 detection range.",
             led: "White",
             ledClass: "led-white",
             buzzer: "Slow beep",
@@ -340,8 +356,8 @@ function getEventMessage(item) {
     if (status === "LEAK") {
         return {
             event: "Local water contact detected",
-            summary: "The FC-37 water sensor detected water near the monitored area",
-            action: "Slow beep activated",
+            summary: "FC-37 detected water contact, but YF-S201 did not detect measurable flow",
+            action: "Leak contact time recorded",
         };
     }
 
@@ -386,19 +402,67 @@ function getAlertMessage(item) {
     };
 }
 
-function shouldEstimateWaste(status) {
+function isMeasuredFlowWasteStatus(status) {
     return status === "WARNING" || status === "ALERT" || status === "CRITICAL";
 }
 
-function calculateEstimatedWasteLitres(status, flowRateLpm, durationSec) {
+function calculateLiveMeasuredWasteLitres(status, flowRateLpm, durationSec) {
     const safeFlowRate = Number(flowRateLpm || 0);
     const safeDuration = Number(durationSec || 0);
 
-    if (!shouldEstimateWaste(status) || safeFlowRate <= 0 || safeDuration <= 0) {
+    if (!isMeasuredFlowWasteStatus(status) || safeFlowRate <= 0 || safeDuration <= 0) {
         return 0;
     }
 
     return safeFlowRate * (safeDuration / 60);
+}
+
+function getHistoryStepSystemSeconds(currentItem, nextItem) {
+    let elapsedRealSeconds = nextItem
+        ? Number(nextItem.timestamp) - Number(currentItem.timestamp)
+        : 1;
+
+    if (!Number.isFinite(elapsedRealSeconds) || elapsedRealSeconds <= 0) {
+        elapsedRealSeconds = 1;
+    }
+
+    elapsedRealSeconds = Math.min(elapsedRealSeconds, MAX_HISTORY_STEP_SECONDS);
+
+    return elapsedRealSeconds * TIME_SCALE;
+}
+
+function calculateSessionBreakdown(items) {
+    const ordered = [...items]
+        .filter((item) => item.timestamp)
+        .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+
+    let measuredWasteLitres = 0;
+    let leakContactSeconds = 0;
+
+    for (let index = 0; index < ordered.length; index++) {
+        const item = ordered[index];
+        const nextItem = ordered[index + 1];
+        const status = item.status;
+        const elapsedSystemSeconds = getHistoryStepSystemSeconds(item, nextItem);
+        const elapsedSystemMinutes = elapsedSystemSeconds / 60;
+
+        if (toBool(item.water_flow) && isMeasuredFlowWasteStatus(status)) {
+            const flowRate = Number(item.flow_rate_lpm || 0);
+
+            if (flowRate > 0) {
+                measuredWasteLitres += flowRate * elapsedSystemMinutes;
+            }
+        }
+
+        if (!toBool(item.water_flow) && toBool(item.water_detected) && status === "LEAK") {
+            leakContactSeconds += elapsedSystemSeconds;
+        }
+    }
+
+    return {
+        measuredWasteLitres,
+        leakContactSeconds,
+    };
 }
 
 function SensorCard({ emoji, title, value, raw, detail, active }) {
@@ -473,7 +537,7 @@ function App() {
 
                 const [liveRes, historyRes, alertRes] = await Promise.all([
                     fetch(`${API_BASE}/api/devices/${currentDevice}/live`),
-                    fetch(`${API_BASE}/api/devices/${currentDevice}/history?limit=80`),
+                    fetch(`${API_BASE}/api/devices/${currentDevice}/history?limit=160`),
                     fetch(`${API_BASE}/api/alerts?device_id=${currentDevice}&limit=10`),
                 ]);
 
@@ -539,7 +603,12 @@ function App() {
     const currentRule = LOGIC_RULES.find((rule) => rule.status === status);
     const displayHistory = compactHistory(history).slice(0, 5);
 
-    const estimatedWaste = calculateEstimatedWasteLitres(status, flowRate, duration);
+    const liveMeasuredWaste = calculateLiveMeasuredWasteLitres(status, flowRate, duration);
+    const sessionBreakdown = calculateSessionBreakdown(history);
+    const totalMeasuredWaste = Math.max(
+        liveMeasuredWaste,
+        sessionBreakdown.measuredWasteLitres,
+    );
     const durationMinutes = duration / 60;
 
     async function runScenario(scenario) {
@@ -702,7 +771,7 @@ function App() {
                     title="FC-37 Water Sensor"
                     value={waterDetected ? "Water detected" : "Dry"}
                     raw={`water_detected=${to01(waterDetected)}`}
-                    detail="Local leak / overflow input"
+                    detail="Water contact input, not a flow meter"
                     active={waterDetected}
                 />
 
@@ -739,8 +808,8 @@ function App() {
                         <h2>Estimated Water Waste</h2>
                     </div>
                     <p>
-                        This value is for demo and report purposes. The alert decision still uses
-                        0/1 sensor states and duration, not a fixed flow-rate threshold.
+                        YF-S201 measured flow is used for litre estimates. FC-37-only leak is shown
+                        as contact time because the water sensor can detect water but cannot measure flow rate.
                     </p>
                 </div>
 
@@ -748,26 +817,33 @@ function App() {
                     <EstimateCard
                         title="Flow rate"
                         value={`${flowRate.toFixed(2)} L/min`}
-                        detail="Estimated from YF-S201 pulse frequency"
+                        detail="YF-S201 prototype range: about 0.10–0.40 L/min"
                     />
 
                     <EstimateCard
-                        title="System duration"
-                        value={`${duration}s`}
-                        detail={`${durationMinutes.toFixed(2)} min used in the estimate`}
+                        title="Live measured waste"
+                        value={`${liveMeasuredWaste.toFixed(2)} L`}
+                        detail={`${durationMinutes.toFixed(2)} min used in the current live estimate`}
                     />
 
                     <EstimateCard
-                        title="Estimated water waste"
-                        value={`${estimatedWaste.toFixed(2)} L`}
-                        detail="Flow rate × system duration"
+                        title="Total measured waste"
+                        value={`${totalMeasuredWaste.toFixed(2)} L`}
+                        detail="Accumulated from warning, alert, and critical events with measurable flow"
+                    />
+
+                    <EstimateCard
+                        title="Leak contact time"
+                        value={formatDurationSeconds(sessionBreakdown.leakContactSeconds)}
+                        detail="FC-37 water contact duration; volume is not measured"
                     />
                 </div>
 
                 <div className="estimate-note">
-                    <strong>Formula:</strong> Water wasted = flow rate × duration / 60. The YF-S201
-                    flow rate is used as an estimate only. The main alert logic is still based on
-                    water flow state, human presence, water detection, and duration.
+                    <strong>Formula:</strong> measured waste = YF-S201 flow rate × duration / 60.
+                    FC-37-only leak is not added as litres because a wet sensor may be caused by
+                    standing water or the same droplet remaining on the sensor. It is recorded as
+                    leak contact time and treated as an inspection signal.
                 </div>
             </section>
 
@@ -948,9 +1024,12 @@ function App() {
                                 notify_user: meta.notify,
                                 flow_rate_lpm: flowRate,
                                 system_duration_sec: duration,
-                                estimated_water_waste_litres: Number(estimatedWaste.toFixed(2)),
-                                formula:
-                                    "estimated_water_waste = flow_rate_lpm * (running_duration_sec / 60)",
+                                live_measured_waste_litres: Number(liveMeasuredWaste.toFixed(2)),
+                                total_measured_waste_litres: Number(totalMeasuredWaste.toFixed(2)),
+                                leak_contact_seconds: Math.round(sessionBreakdown.leakContactSeconds),
+                                formula: "measured_waste = flow_rate_lpm * duration_minutes",
+                                leak_note:
+                                    "FC-37-only leak is recorded as contact time because FC-37 cannot measure water volume.",
                                 time_scale_rule: "1 real second = 10 system seconds",
                             },
                             null,
