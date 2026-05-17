@@ -11,13 +11,33 @@ The current prototype supports:
 - FC-37 / water-contact sensor detection
 - abnormal water usage warning
 - forgotten tap alert
-- local leak detection
+- local water contact detection
 - critical leak / overflow detection
 - LED output state
 - buzzer output state
 - optional user notification
 - dashboard simulation without physical hardware
-- estimated water waste for report and demo purposes
+- measured water waste estimate for report and demo purposes
+- leak contact time tracking for FC-37-only leak cases
+
+---
+
+## Project Use Case
+
+The target scenario is a vacant room after checkout, such as a hotel room or Airbnb room.
+
+After a guest leaves, the room may remain empty for a period of time. During this time, water-related issues may not be noticed immediately.
+
+Possible situations include:
+
+- a tap left running
+- a sink overflow
+- local water contact near the basin
+- a small leak near a pipe or sink area
+- water flow while no person is present
+- water contact detected after checkout while the room is empty
+
+The system is designed to detect these situations early and show the risk level through the dashboard, LEDs, buzzer, and notification status.
 
 ---
 
@@ -29,7 +49,7 @@ The current prototype supports:
 | `NORMAL_FLOW` | Water is flowing while a human is present |
 | `WARNING` | Water is flowing with no human present, but the duration is still below the alert threshold |
 | `ALERT` | Water is flowing with no human present for too long |
-| `LEAK` | FC-37 / water sensor detects local water contact while no water flow is detected |
+| `LEAK` | FC-37 / water sensor detects local water contact while no measurable water flow is detected |
 | `CRITICAL` | Water flow and local water contact are both detected |
 
 ---
@@ -65,6 +85,32 @@ the backend will automatically calculate the running duration. After about 30 re
 ```text
 WARNING → ALERT
 ```
+
+---
+
+## Classroom Demo Plan
+
+During the presentation, the system will be demonstrated using dashboard simulation.
+
+This is because the real tap and sensor setup is located in a bathroom or practical testing area, so it is not realistic to bring the teacher there during the presentation.
+
+The demo plan is:
+
+1. Use the React dashboard and backend simulation to demonstrate the full system logic.
+2. Show status transitions on the dashboard.
+3. Show changing flow-rate values in the simulation.
+4. Show measured water waste from YF-S201 flow readings.
+5. Show FC-37 leak contact time.
+6. Show Device History and Alert History.
+7. Provide an additional recorded video of the real hardware tap test as supporting evidence.
+
+The simulated flow rate is designed to vary between:
+
+```text
+0.10 L/min → 0.20 L/min → 0.30 L/min → 0.40 L/min
+```
+
+This matches the prototype hardware test where the YF-S201 started detecting water flow at around `0.10 L/min` and reached around `0.40 L/min` at maximum tap flow.
 
 ---
 
@@ -144,7 +190,7 @@ The backend uses `0/1` values for sensor data.
 
 | Field | 0 means | 1 means |
 |---|---|---|
-| `water_flow` | No water flow | Water flow detected |
+| `water_flow` | No measurable water flow | Water flow detected |
 | `human_present` | No human detected | Human detected |
 | `water_detected` | FC-37 / water sensor is dry | Water contact detected |
 | `alert` | No user alert required | User alert required |
@@ -201,7 +247,7 @@ CRITICAL
 
 ---
 
-## Flow Rate and Estimated Water Waste
+## Flow Rate and Water Estimate Design
 
 The YF-S201 flow sensor provides pulse-based water flow information.
 
@@ -213,36 +259,93 @@ Flow rate (L/min) = pulse frequency / 7.5
 
 For this prototype, the flow rate is used only as an estimate for reporting and dashboard display. It is not used as the main alert trigger.
 
-The dashboard estimates water waste using:
+The prototype tap test showed:
 
 ```text
-Estimated water waste (L) = flow rate (L/min) × duration (min)
+YF-S201 starts detecting flow at around 0.10 L/min
+Maximum measured tap flow is around 0.40 L/min
 ```
 
-Since the backend stores duration in seconds, the calculation is:
+Therefore, the main alert logic does not use a fixed flow-rate threshold such as `0.50 L/min`. A fixed `0.50 L/min` threshold may not trigger reliably in this prototype.
+
+The main alert logic uses:
 
 ```text
-Estimated water waste (L) = flow_rate_lpm × running_duration_sec / 60
+water_flow
+human_present
+water_detected
+duration
+```
+
+---
+
+## Estimated Water Waste
+
+The dashboard shows measured water waste only when YF-S201 detects measurable flow.
+
+Formula:
+
+```text
+Measured water waste (L) = flow_rate_lpm × duration_seconds / 60
 ```
 
 Example:
 
 ```text
 flow_rate_lpm = 0.40 L/min
-running_duration_sec = 300 sec = 5 min
+duration = 300 sec = 5 min
 
-Estimated water waste = 0.40 × 5 = 2.00 L
+Measured water waste = 0.40 × 5 = 2.00 L
 ```
 
-Important:
+The dashboard separates:
+
+| Dashboard value | Meaning |
+|---|---|
+| `Flow rate` | Current YF-S201 estimated flow rate |
+| `Live measured waste` | Current event water waste estimate using live flow rate and running duration |
+| `Total measured waste` | Accumulated measured waste from `WARNING`, `ALERT`, and `CRITICAL` events |
+| `Leak contact time` | How long FC-37 has detected water contact when YF-S201 does not detect measurable flow |
+
+---
+
+## Why LEAK is not counted as litres
+
+When the status is:
 
 ```text
-The estimated water waste value is for demo and report purposes.
-The main alert logic does not use a fixed flow-rate threshold.
-The main alert logic uses water_flow, human_present, water_detected, and duration.
+LEAK
+water_flow = 0
+water_detected = 1
 ```
 
-This design was chosen because the prototype YF-S201 tap test measured around `0.40 L/min`. Therefore, using a fixed threshold such as `0.50 L/min` may not trigger reliably in the prototype.
+the FC-37 sensor has detected water contact, but the YF-S201 flow sensor has not detected measurable flow.
+
+This can mean:
+
+- a few water drops are on the FC-37 sensor
+- the same water drop remains on the sensor
+- local water is already present near the sink
+- there is a very small leak below the YF-S201 detection range
+- the leak is not passing through the YF-S201 sensor
+
+Because FC-37 can detect water contact but cannot measure flow rate, the system does not claim an exact litre value for `LEAK`.
+
+Instead, the dashboard records:
+
+```text
+Leak contact time
+```
+
+This is more realistic than pretending that FC-37 can measure water volume.
+
+If `water_flow=1` and `water_detected=1`, the status becomes:
+
+```text
+CRITICAL
+```
+
+In this case, the system can estimate measured water waste using the YF-S201 flow rate.
 
 ---
 
@@ -400,7 +503,9 @@ The React dashboard shows:
 - LED output
 - buzzer output
 - notify user status
-- estimated water waste
+- live measured water waste
+- total measured water waste
+- leak contact time
 - simulation scenario buttons
 - reset normal button
 - clear demo button
@@ -467,7 +572,9 @@ Status: NORMAL
 LED: Green
 Buzzer: Off
 Notify User: No
-Estimated Water Waste: 0.00 L
+Live Measured Waste: 0.00 L
+Total Measured Waste: 0.00 L
+Leak Contact Time: 0s
 ```
 
 ### Step 4: Test normal water usage
@@ -504,7 +611,7 @@ LED: Yellow
 Buzzer: Off
 Notify User: No
 Device History: Unattended water flow detected
-Estimated Water Waste: calculated from flow rate and duration
+Live Measured Waste: calculated from flow rate and duration
 ```
 
 ### Step 6: Test forgotten tap alert
@@ -524,6 +631,7 @@ Buzzer: Intermittent
 Notify User: Yes
 Device History: Forgotten tap detected
 Alert History: Forgotten tap alert
+Live Measured Waste: calculated from flow rate and duration
 ```
 
 ### Step 7: Test local water contact
@@ -542,6 +650,8 @@ LED: White
 Buzzer: Slow beep
 Notify User: No
 Device History: Local water contact detected
+Leak Contact Time: increases while water contact remains detected
+Measured water waste in litres is not calculated because YF-S201 does not detect measurable flow
 ```
 
 ### Step 8: Test critical leak / overflow
@@ -561,18 +671,58 @@ Buzzer: Continuous
 Notify User: Yes
 Device History: Critical leak condition detected
 Alert History: Critical leak alert
+Total Measured Waste: keeps accumulated measured water waste
 ```
 
 ---
 
 ## Dynamic Demo Test with PowerShell
 
-The dashboard buttons are useful for quick testing.  
+The dashboard buttons are useful for quick testing.
+
 For a more realistic demo, send repeated sensor values through the backend simulation API.
 
 Open a third PowerShell terminal from the project root.
 
+### Why simulation is used in the classroom demo
+
+The physical tap and YF-S201 flow sensor test is located in a bathroom or practical testing area. It is not realistic to bring the teacher to the bathroom during the presentation.
+
+Therefore, the classroom demo uses backend simulation to show the full dashboard behaviour.
+
+A separate real hardware video should be recorded to show:
+
+- actual tap water through YF-S201
+- FC-37 water contact detection
+- LD2410C human presence detection
+- OLED display
+- LEDs
+- buzzer
+- Serial Monitor payload
+- dashboard response
+
+The simulation uses the same `0/1` payload structure as the ESP32 hardware.
+
+### Flow-rate range used in simulation
+
+In the real prototype test:
+
+```text
+YF-S201 starts detecting water flow at around 0.10 L/min
+Maximum measured tap flow is around 0.40 L/min
+```
+
+Therefore, the simulation varies flow rate between:
+
+```text
+0.10 L/min → 0.20 L/min → 0.30 L/min → 0.40 L/min
+```
+
+This makes the demo more realistic than using a fixed value for every sensor message.
+
 ### Helper functions
+
+Run this first:
 
 ```powershell
 $base = "http://localhost:8000"
@@ -607,14 +757,198 @@ function Clear-Demo {
         -Method Post `
         -Uri "$base/api/devices/$device/reset?clear_logs=1"
 }
+
+function Reset-Normal {
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "$base/api/devices/$device/reset?clear_logs=0"
+}
+
+function Get-DemoFlowRate {
+    param([int]$Step)
+
+    $rates = @(0.10, 0.20, 0.30, 0.40, 0.30, 0.20)
+
+    return $rates[($Step - 1) % $rates.Count]
+}
 ```
 
-### Full demo path
+---
 
-This demonstrates:
+### Scenario 1: Normal room condition
+
+This shows the room is empty and safe.
+
+Expected result:
+
+```text
+NORMAL
+Green LED
+Buzzer off
+No notification
+Measured water waste = 0.00 L
+Leak contact time = 0s
+```
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 5; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+---
+
+### Scenario 2: Normal water usage
+
+This shows water is flowing while a person is present.
+
+Expected result:
+
+```text
+NORMAL → NORMAL_FLOW → NORMAL
+Blue LED during normal water usage
+No alert
+No notification
+```
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 8; $i++) {
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 1 0 $rate
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+```
+
+---
+
+### Scenario 3: Forgotten tap / unattended water flow
+
+This shows water flowing while no person is present.
+
+Expected result:
+
+```text
+NORMAL → WARNING → ALERT
+Yellow LED during WARNING
+Red LED during ALERT
+Intermittent buzzer during ALERT
+Notification sent
+Live measured waste increases
+Total measured waste increases
+```
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 35; $i++) {
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 0 0 $rate
+    Start-Sleep -Seconds 1
+}
+```
+
+---
+
+### Scenario 4: Local water contact / possible low-flow leak
+
+This shows FC-37 detecting water while YF-S201 does not detect measurable flow.
+
+Expected result:
+
+```text
+NORMAL → LEAK
+White LED
+Slow beep
+No remote notification
+Leak contact time increases
+Measured water waste in litres does not increase
+```
+
+This is because FC-37 can detect water contact but cannot measure flow rate or water volume.
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 15; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+```
+
+---
+
+### Scenario 5: Local leak becomes critical
+
+This shows water contact first, then measurable flow appears.
+
+Expected result:
+
+```text
+NORMAL → LEAK → CRITICAL
+White LED during LEAK
+Red flashing LED during CRITICAL
+Continuous buzzer during CRITICAL
+Notification sent
+Leak contact time records the FC-37-only period
+Total measured waste increases once YF-S201 detects measurable flow
+```
+
+```powershell
+Clear-Demo
+
+for ($i = 1; $i -le 3; $i++) {
+    Send-Sensor 0 0 0 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 10; $i++) {
+    Send-Sensor 0 0 1 0
+    Start-Sleep -Seconds 1
+}
+
+for ($i = 1; $i -le 12; $i++) {
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 0 1 $rate
+    Start-Sleep -Seconds 1
+}
+```
+
+---
+
+### Scenario 6: Full demo path
+
+This is the best scenario for the presentation.
+
+Expected result:
 
 ```text
 NORMAL → NORMAL_FLOW → WARNING → ALERT → CRITICAL
+Green → Blue → Yellow → Red → Red flashing
 ```
 
 ```powershell
@@ -626,140 +960,34 @@ for ($i = 1; $i -le 3; $i++) {
 }
 
 for ($i = 1; $i -le 6; $i++) {
-    Send-Sensor 1 1 0 0.4
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 1 0 $rate
     Start-Sleep -Seconds 1
 }
 
 for ($i = 1; $i -le 35; $i++) {
-    Send-Sensor 1 0 0 0.4
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 0 0 $rate
     Start-Sleep -Seconds 1
 }
 
 for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 1 0 1 0.4
+    $rate = Get-DemoFlowRate $i
+    Send-Sensor 1 0 1 $rate
     Start-Sleep -Seconds 1
 }
 ```
 
-Expected result:
+The full demo path should show:
 
 ```text
-Green → Blue → Yellow → Red → Red flashing
-```
-
-The system uses:
-
-```text
-1 real second = 10 system seconds
-```
-
-So around 30 real seconds of unattended flow becomes 300 system seconds and triggers `ALERT`.
-
----
-
-## Other Dynamic Test Scenarios
-
-### Normal usage path
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 8; $i++) {
-    Send-Sensor 1 1 0 0.4
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected:
-
-```text
-NORMAL → NORMAL_FLOW → NORMAL
-```
-
-### Forgotten tap path
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 35; $i++) {
-    Send-Sensor 1 0 0 0.4
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected:
-
-```text
-NORMAL → WARNING → ALERT
-```
-
-### Local leak path
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected:
-
-```text
-NORMAL → LEAK → NORMAL
-```
-
-### Local leak becomes critical
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 8; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 1 0 1 0.4
-    Start-Sleep -Seconds 1
-}
-```
-
-Expected:
-
-```text
-NORMAL → LEAK → CRITICAL
+Current status changes
+Flow rate changes
+Live measured waste changes
+Total measured waste accumulates
+Leak contact time only changes during FC-37-only LEAK periods
+Device History updates with human-readable events
+Alert History records ALERT and CRITICAL events
 ```
 
 ---
@@ -809,6 +1037,28 @@ docker exec smartwater-mosquitto mosquitto_pub `
     -t home/bathroom/device01/sensor `
     -m $payload
 ```
+
+---
+
+## Real Hardware Test Evidence
+
+For the final presentation, the dashboard simulation is used for live demonstration.
+
+The real hardware test should be recorded separately as a video.
+
+The video should show:
+
+- ESP32 powered on
+- sensor wiring
+- OLED display
+- YF-S201 connected to tap water
+- FC-37 water detection
+- LD2410C human presence detection
+- Serial Monitor MQTT payload
+- dashboard receiving the sensor values
+- LED and buzzer output
+
+This supports the claim that the simulation uses the same data format and decision logic as the real hardware prototype.
 
 ---
 
@@ -942,7 +1192,9 @@ React Dashboard
 LED / Buzzer / User Notification Display
 ```
 
-The frontend does not decide the real alert state.  
+The frontend does not decide the real alert state.
+
 The backend handles sensor validation, status classification, duration timing, alert creation, and notification logic.
 
 The dashboard displays the backend state clearly for demo and monitoring.
+```
