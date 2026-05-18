@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Smart Water Monitor</title>
+  <title>Smart Water Monitoring and Alert System</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-2: #334155;
+      --bg: #07111f;
+      --panel: #0f1c2e;
+      --panel-2: #16263d;
       --text: #e2e8f0;
       --muted: #94a3b8;
       --accent: #38bdf8;
@@ -36,9 +36,9 @@
       gap: 12px;
     }
     header h1 {
-      font-size: 18px;
+      font-size: 26px;
       margin: 0;
-      font-weight: 600;
+      font-weight: 700;
     }
     .conn {
       font-size: 12px;
@@ -66,6 +66,10 @@
       margin-bottom: 24px;
       flex-wrap: wrap;
       align-items: center;
+      background: var(--panel);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
     }
     select, input, button {
       background: var(--panel);
@@ -90,6 +94,7 @@
       border-radius: 8px;
       padding: 16px 20px;
       margin-bottom: 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
     }
     .card h2 {
       font-size: 14px;
@@ -107,6 +112,10 @@
       background: var(--panel-2);
       border-radius: 6px;
       padding: 12px;
+      transition: 0.2s;
+    }
+    .stat:hover {
+      transform: translateY(-2px);
     }
     .stat .label {
       font-size: 11px;
@@ -143,6 +152,8 @@
       margin-bottom: 16px;
       font-weight: 600;
       display: none;
+      font-size: 16px;
+      box-shadow: 0 0 20px rgba(239,68,68,0.25);
     }
     .alert-banner.show { display: block; }
     table {
@@ -173,32 +184,113 @@
 </head>
 <body>
   <header>
-    <h1>Smart Water Monitor</h1>
-    <span id="conn" class="conn"><span class="dot"></span><span id="connText">disconnected</span></span>
+   <div>
+    <h1>Smart Water Monitoring and Alert System</h1>
+
+    <div class="muted">
+      MQTT-Based IoT Dashboard for Abnormal Water Usage Detection
+    </div>
+   </div>
+
+   <span id="conn" class="conn">
+    <span class="dot"></span>
+    <span id="connText">disconnected</span>
+   </span>
   </header>
 
   <main>
-    <div class="controls">
-      <label for="deviceSelect" class="muted">Device:</label>
-      <select id="deviceSelect"></select>
-      <input id="deviceInput" placeholder="or type device_id" />
-      <button id="loadBtn">Load</button>
-      <button id="refreshBtn">Refresh alerts</button>
-    </div>
-
-    <div id="alertBanner" class="alert-banner"></div>
-
-    <div class="card">
-      <h2>Live status</h2>
-      <div id="liveContent" class="empty">No device selected.</div>
-    </div>
-
-    <div class="card">
-      <h2>Recent alerts</h2>
-      <div id="alertsContent">
-        <div class="empty">Loading...</div>
+      <div class="card">
+          <h2>Project Overview</h2>
+          <p class="muted">
+              This dashboard shows real-time water monitoring data from the ESP32 device.
+              The system checks water flow and human presence to detect possible water waste.
+          </p>
+          <p>
+              <strong>Alert rule:</strong>
+              If water is running and no human is detected for 5 minutes, the system creates an alert.
+          </p>
       </div>
-    </div>
+
+      <div class="controls">
+          <label for="deviceSelect" class="muted">Device:</label>
+          <select id="deviceSelect"></select>
+          <input id="deviceInput" placeholder="or type device_id" />
+          <button id="loadBtn">Load</button>
+          <button id="refreshBtn">Refresh alerts</button>
+      </div>
+
+      <div id="alertBanner" class="alert-banner"></div>
+
+      <div class="card">
+          <h2>System Logic</h2>
+
+          <div class="status-grid">
+              <div class="stat">
+                  <div class="label">Condition 1</div>
+                  <div class="value">Water Flow = YES</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Condition 2</div>
+                  <div class="value">Human Present = NO</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Threshold</div>
+                  <div class="value">300s</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Result</div>
+                  <div class="value">Alert</div>
+              </div>
+          </div>
+      </div>
+
+      <div class="card">
+          <h2>Demo Scenario</h2>
+
+          <p class="muted">
+              This dashboard demonstrates a real-time MQTT-based IoT water monitoring system.
+          </p>
+
+          <div class="status-grid">
+
+              <div class="stat">
+                  <div class="label">Step 1</div>
+                  <div class="value">ESP32 reads sensors</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Step 2</div>
+                  <div class="value">MQTT sends live data</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Step 3</div>
+                  <div class="value">Backend processes alerts</div>
+              </div>
+
+              <div class="stat">
+                  <div class="label">Step 4</div>
+                  <div class="value">Dashboard updates instantly</div>
+              </div>
+
+          </div>
+      </div>
+      
+
+      <div class="card">
+          <h2>Live Device Status</h2>
+          <div id="liveContent" class="empty">No device selected.</div>
+      </div>
+
+      <div class="card">
+          <h2>Alert History</h2>
+          <div id="alertsContent">
+              <div class="empty">Loading...</div>
+          </div>
+      </div>
   </main>
 
   <script>
@@ -339,7 +431,7 @@
     function renderAlerts(alerts) {
       const target = $("alertsContent");
       if (!alerts || alerts.length === 0) {
-        target.innerHTML = `<div class="empty">No alerts yet.</div>`;
+        target.innerHTML = `<div class="empty">No abnormal water usage has been detected yet.</div>`;
         return;
       }
       const rows = alerts.map(a => `
@@ -389,7 +481,7 @@
         if (msg.event === "sensor_update") {
           applySensorUpdate(msg.data);
         } else if (msg.event === "alert_created") {
-          showAlertBanner(`ALERT: ${msg.data.device_id} — ${msg.data.alert_type} (${msg.data.strength}, ${msg.data.duration_sec}s)`);
+          showAlertBanner(`ALERT: Water has been running with no human detected near ${msg.data.device_id} for ${msg.data.duration_sec}s.`);
           loadAlerts();
         } else if (msg.event === "device_status") {
           applyDeviceStatus(msg.data);

@@ -67,7 +67,7 @@ services:
     ports:
       - "3000:80"
     volumes:
-      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend-react/dist:/usr/share/nginx/html:ro
     depends_on:
       - backend
 
