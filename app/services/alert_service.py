@@ -20,8 +20,23 @@ logger = logging.getLogger(__name__)
 
 
 def _strength_for_status(status: ConditionStatus, duration_sec: int) -> AlertStrength:
+    """Map system states to user-facing risk level.
+
+    WARNING is low risk.
+    ALERT is medium risk.
+    CRITICAL is high risk.
+
+    This prevents Telegram from showing:
+    Status: ALERT
+    Severity: LOW
+    """
+
     if status == ConditionStatus.CRITICAL:
         return AlertStrength.HIGH
+
+    if status == ConditionStatus.ALERT:
+        return AlertStrength.MEDIUM
+
     return compute_strength(duration_sec)
 
 
@@ -50,6 +65,7 @@ async def _persist_and_dispatch(
         timestamp=timestamp,
         created_at=int(time.time()),
     )
+
     await alert.insert()
 
     logger.info(
@@ -120,6 +136,7 @@ async def evaluate_sensor(
         device.active_alert_at = None
         device.active_alert_status = None
         await device.save()
+
         logger.info("alert reset for device=%s", payload.device_id)
 
     return None
