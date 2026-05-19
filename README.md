@@ -1,56 +1,92 @@
 # Smart Hydro Alert
 
-Smart Hydro Alert is an IoT water monitoring and leak alert prototype built for Group 4.
+Smart Hydro Alert is an IoT-based water waste and leak detection prototype built for Group 4.
 
-The system receives `0/1` sensor values from an ESP32 or simulator through MQTT, stores readings in MongoDB, applies backend decision logic, sends optional user notifications, and displays the current system state through a React dashboard.
+The system is designed for **public restroom and shared washroom monitoring**. It receives `0/1` sensor values from an ESP32 or simulator through MQTT, stores readings in MongoDB, applies backend decision logic, sends Telegram maintenance notifications for high-risk states, and displays the current system state through a React dashboard.
 
 The current prototype supports:
 
 - real-time water flow monitoring
 - human presence detection
-- FC-37 / water-contact sensor detection
+- FC-37 water-contact sensor detection
 - abnormal water usage warning
 - forgotten tap alert
 - local water contact detection
-- critical leak / overflow detection
+- combined-sensor critical overflow detection
 - LED output state
 - buzzer output state
-- optional user notification
+- Telegram maintenance notification
 - dashboard simulation without physical hardware
 - measured water waste estimate for report and demo purposes
-- leak contact time tracking for FC-37-only leak cases
+- leak contact time tracking for FC-37-only water-contact cases
 
 ---
 
 ## Project Use Case
 
-The target scenario is a vacant room after checkout, such as a hotel room or Airbnb room.
+The target scenario is **public restroom and shared washroom monitoring** in places such as universities, shopping centres, airports, office buildings, and other public facilities.
 
-After a guest leaves, the room may remain empty for a period of time. During this time, water-related issues may not be noticed immediately.
+In these environments, maintenance staff cannot continuously monitor every sink or restroom area. Water-related issues may therefore remain unnoticed until a user reports the problem or staff perform manual inspection.
 
 Possible situations include:
 
-- a tap left running
-- a sink overflow
-- local water contact near the basin
-- a small leak near a pipe or sink area
-- water flow while no person is present
-- water contact detected after checkout while the room is empty
+- a tap left running after a user leaves
+- water flow while no nearby person is detected
+- local water contact near the basin or floor area
+- possible sink overflow
+- possible local leakage around the monitored water-use area
+- delayed maintenance response to abnormal water conditions
 
-The system is designed to detect these situations early and show the risk level through the dashboard, LEDs, buzzer, and notification status.
+The system is designed to detect these situations early and show the risk level through the React dashboard, LEDs, buzzer, and Telegram notification status.
+
+### Combined Sensor Validation
+
+To reduce false alarms and improve monitoring accuracy, Smart Hydro Alert uses **combined sensor-based detection**.
+
+For example, a wet floor caused by cleaning activity may trigger the FC-37 sensor alone without representing a dangerous overflow condition. Similarly, active water flow alone may simply represent normal sink usage. Therefore, the system uses combined sensor validation before escalating to the `CRITICAL` monitoring state.
+
+This means:
+
+- `FC-37 water contact only` is treated as `LEAK`, which is a local inspection state.
+- `Water flow only` is checked using human presence and duration logic.
+- `CRITICAL` is triggered only when measurable water flow and FC-37 water contact are detected together.
 
 ---
 
 ## Current Condition States
 
-| Status | Meaning |
-|---|---|
-| `NORMAL` | No water flow and no local water contact |
-| `NORMAL_FLOW` | Water is flowing while a human is present |
-| `WARNING` | Water is flowing with no human present, but the duration is still below the alert threshold |
-| `ALERT` | Water is flowing with no human present for too long |
-| `LEAK` | FC-37 / water sensor detects local water contact while no measurable water flow is detected |
-| `CRITICAL` | Water flow and local water contact are both detected |
+| Status | Meaning | Remote notification |
+|---|---|---|
+| `NORMAL` | No measurable water flow and no local water contact | No |
+| `NORMAL_FLOW` | Water is flowing while a human is present, so it is treated as normal sink usage | No |
+| `WARNING` | Water is flowing with no human present, but the duration is still below the alert threshold | No |
+| `ALERT` | Water is flowing with no human present for too long, suggesting a forgotten tap risk | Yes |
+| `LEAK` | FC-37 detects local water contact while YF-S201 does not detect measurable flow. This may be cleaning water, spillage, standing water, or a local inspection condition | No |
+| `CRITICAL` | YF-S201 detects measurable flow and FC-37 detects water contact at the same time, indicating a higher-risk overflow condition | Yes |
+
+---
+
+## Risk Level Mapping
+
+| System state | Risk level | Meaning |
+|---|---|---|
+| `WARNING` | `LOW` | Suspicious unattended water flow, but still below the alert threshold |
+| `ALERT` | `MEDIUM` | Forgotten tap risk after unattended flow reaches the alert threshold |
+| `CRITICAL` | `HIGH` | Measurable water flow and FC-37 water contact are detected together |
+
+This mapping avoids confusing messages such as:
+
+```text
+Status: ALERT
+Severity: LOW
+```
+
+Instead, the Telegram notification should show:
+
+```text
+Status: ALERT
+Risk Level: MEDIUM
+```
 
 ---
 
@@ -88,6 +124,22 @@ WARNING → ALERT
 
 ---
 
+## LD2410C Demo Configuration
+
+For the classroom demo, the LD2410C presence sensor is configured for very short-range detection.
+
+| Parameter | Setting | Purpose |
+|---|---|---|
+| Detection accuracy | `0.2 m` | Higher close-range precision |
+| Detection range | `0 m – 0.2 m` | Only detect a person standing very close to the monitored sink area |
+| Unmanned duration | `3 s` | Quickly return to no-human state after the person leaves |
+| Trigger level | `Low level` | Match ESP32 input logic |
+| Photosensitive linkage | `Close` | Disable light-based linkage |
+
+The range is intentionally limited to reduce false detection from classmates, the teacher, or people standing near the demo area.
+
+---
+
 ## Classroom Demo Plan
 
 During the presentation, the system will be demonstrated using dashboard simulation.
@@ -102,7 +154,8 @@ The demo plan is:
 4. Show measured water waste from YF-S201 flow readings.
 5. Show FC-37 leak contact time.
 6. Show Device History and Alert History.
-7. Provide an additional recorded video of the real hardware tap test as supporting evidence.
+7. Show Telegram notifications for `ALERT` and `CRITICAL`.
+8. Provide an additional recorded video of the real hardware tap test as supporting evidence.
 
 The simulated flow rate is designed to vary between:
 
@@ -233,17 +286,21 @@ Example MQTT payload:
 |---|---|---|---|---|
 | `NORMAL` | `water_flow=0`, `water_detected=0` | Green | Off | No |
 | `NORMAL_FLOW` | `water_flow=1`, `human_present=1`, `water_detected=0` | Blue | Off | No |
-| `WARNING` | `water_flow=1`, `human_present=0`, duration below threshold | Yellow | Off | No |
-| `ALERT` | `water_flow=1`, `human_present=0`, duration reaches threshold | Red | Intermittent | Yes |
+| `WARNING` | `water_flow=1`, `human_present=0`, `water_detected=0`, duration below threshold | Yellow | Off | No |
+| `ALERT` | `water_flow=1`, `human_present=0`, `water_detected=0`, duration reaches threshold | Red | Intermittent | Yes |
 | `LEAK` | `water_flow=0`, `water_detected=1` | White | Slow beep | No |
 | `CRITICAL` | `water_flow=1`, `water_detected=1` | Red flashing | Continuous | Yes |
 
-The backend creates remote user notifications only for:
+The backend only sends remote notifications for:
 
 ```text
 ALERT
 CRITICAL
 ```
+
+`LEAK` does not send a remote notification because FC-37-only water contact can be caused by cleaning activity, local spillage, or standing water. It is still shown on the dashboard and recorded as an inspection signal.
+
+`CRITICAL` uses combined sensor validation. It is escalated only when the system detects both measurable water flow and FC-37 water contact at the same time.
 
 ---
 
@@ -323,13 +380,14 @@ the FC-37 sensor has detected water contact, but the YF-S201 flow sensor has not
 
 This can mean:
 
+- cleaning activity has made the floor or sensor wet
 - a few water drops are on the FC-37 sensor
 - the same water drop remains on the sensor
 - local water is already present near the sink
 - there is a very small leak below the YF-S201 detection range
 - the leak is not passing through the YF-S201 sensor
 
-Because FC-37 can detect water contact but cannot measure flow rate, the system does not claim an exact litre value for `LEAK`.
+Because FC-37 can detect water contact but cannot measure flow rate or water volume, the system does not claim an exact litre value for `LEAK`.
 
 Instead, the dashboard records:
 
@@ -361,14 +419,14 @@ Normal water usage detected
 Unattended water flow detected
 Forgotten tap detected
 Local water contact detected
-Critical leak condition detected
+Critical overflow risk detected
 ```
 
 Alert History shows generated alert events, for example:
 
 ```text
 Forgotten tap alert → Notification sent
-Critical leak alert → Buzzer and notification activated
+Critical overflow alert → Buzzer and notification activated
 ```
 
 Raw `0/1` backend values are still available in the technical backend values section.
@@ -557,7 +615,7 @@ The device state returns to normal.
 Old device history and alert history are cleared.
 ```
 
-### Step 3: Test normal room condition
+### Step 3: Test normal restroom condition
 
 Click:
 
@@ -626,12 +684,14 @@ Expected result:
 
 ```text
 Status: ALERT
+Risk Level: MEDIUM
 LED: Red
 Buzzer: Intermittent
 Notify User: Yes
 Device History: Forgotten tap detected
 Alert History: Forgotten tap alert
 Live Measured Waste: calculated from flow rate and duration
+Telegram notification: sent
 ```
 
 ### Step 7: Test local water contact
@@ -652,9 +712,10 @@ Notify User: No
 Device History: Local water contact detected
 Leak Contact Time: increases while water contact remains detected
 Measured water waste in litres is not calculated because YF-S201 does not detect measurable flow
+Telegram notification: not sent
 ```
 
-### Step 8: Test critical leak / overflow
+### Step 8: Test critical overflow risk
 
 Click:
 
@@ -666,12 +727,14 @@ Expected result:
 
 ```text
 Status: CRITICAL
+Risk Level: HIGH
 LED: Red flashing
 Buzzer: Continuous
 Notify User: Yes
-Device History: Critical leak condition detected
-Alert History: Critical leak alert
+Device History: Critical overflow risk detected
+Alert History: Critical overflow alert
 Total Measured Waste: keeps accumulated measured water waste
+Telegram notification: sent
 ```
 
 ---
@@ -775,9 +838,9 @@ function Get-DemoFlowRate {
 
 ---
 
-### Scenario 1: Normal room condition
+### Scenario 1: Normal restroom condition
 
-This shows the room is empty and safe.
+This shows the restroom monitoring area is safe.
 
 Expected result:
 
@@ -847,7 +910,7 @@ NORMAL → WARNING → ALERT
 Yellow LED during WARNING
 Red LED during ALERT
 Intermittent buzzer during ALERT
-Notification sent
+Telegram notification sent
 Live measured waste increases
 Total measured waste increases
 ```
@@ -869,7 +932,7 @@ for ($i = 1; $i -le 35; $i++) {
 
 ---
 
-### Scenario 4: Local water contact / possible low-flow leak
+### Scenario 4: Local water contact only
 
 This shows FC-37 detecting water while YF-S201 does not detect measurable flow.
 
@@ -902,7 +965,7 @@ for ($i = 1; $i -le 15; $i++) {
 
 ---
 
-### Scenario 5: Local leak becomes critical
+### Scenario 5: Combined-sensor critical overflow risk
 
 This shows water contact first, then measurable flow appears.
 
@@ -913,7 +976,7 @@ NORMAL → LEAK → CRITICAL
 White LED during LEAK
 Red flashing LED during CRITICAL
 Continuous buzzer during CRITICAL
-Notification sent
+Telegram notification sent
 Leak contact time records the FC-37-only period
 Total measured waste increases once YF-S201 detects measurable flow
 ```
@@ -988,6 +1051,7 @@ Total measured waste accumulates
 Leak contact time only changes during FC-37-only LEAK periods
 Device History updates with human-readable events
 Alert History records ALERT and CRITICAL events
+Telegram notifications are sent for ALERT and CRITICAL
 ```
 
 ---
@@ -1057,6 +1121,7 @@ The video should show:
 - Serial Monitor MQTT payload
 - dashboard receiving the sensor values
 - LED and buzzer output
+- Telegram notification for `ALERT` and `CRITICAL`
 
 This supports the claim that the simulation uses the same data format and decision logic as the real hardware prototype.
 
@@ -1064,7 +1129,7 @@ This supports the claim that the simulation uses the same data format and decisi
 
 ## Notification
 
-The backend can send notifications for:
+The backend can send Telegram notifications for:
 
 ```text
 ALERT
@@ -1094,6 +1159,42 @@ Important:
 
 ```text
 Do not commit .env to GitHub.
+```
+
+### Telegram Message Design
+
+`ALERT` message example:
+
+```text
+🚨 Smart Hydro Alert
+
+Device: device01
+Status: ALERT
+Risk Level: MEDIUM
+Duration: 300s
+
+Reason:
+Water flow continued without nearby human presence until the alert threshold was reached.
+
+Action:
+Please check whether the tap has been left running.
+```
+
+`CRITICAL` message example:
+
+```text
+🚨 Smart Hydro Alert
+
+Device: device01
+Status: CRITICAL
+Risk Level: HIGH
+Duration: Immediate trigger
+
+Reason:
+Measurable water flow and FC-37 water contact were detected at the same time.
+
+Action:
+Please inspect the sink, tap, and nearby floor area immediately.
 ```
 
 ---
@@ -1189,7 +1290,7 @@ MongoDB
         ↓
 React Dashboard
         ↓
-LED / Buzzer / User Notification Display
+LED / Buzzer / Telegram Notification Display
 ```
 
 The frontend does not decide the real alert state.
@@ -1197,4 +1298,3 @@ The frontend does not decide the real alert state.
 The backend handles sensor validation, status classification, duration timing, alert creation, and notification logic.
 
 The dashboard displays the backend state clearly for demo and monitoring.
-```
