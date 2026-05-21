@@ -55,8 +55,10 @@ class SensorPayload(_StrictBase):
     def only_accept_0_or_1(cls, value: object) -> int:
         if isinstance(value, bool):
             return 1 if value else 0
+
         if isinstance(value, int) and value in (0, 1):
             return value
+
         raise ValueError("sensor values must be 0 or 1")
 
 
@@ -86,18 +88,33 @@ class DeviceRegisterRequest(_StrictBase):
 def compute_strength(duration_sec: int) -> AlertStrength:
     if duration_sec >= 1200:
         return AlertStrength.HIGH
+
     if duration_sec >= 600:
         return AlertStrength.MEDIUM
+
     return AlertStrength.LOW
 
 
 def derive_condition_status(payload: SensorPayload, threshold_sec: int) -> ConditionStatus:
+    """Classify restroom condition using combined sensor validation.
+
+    Design principle:
+    - FC-37 water contact alone is treated as LEAK / local inspection only.
+      It may be caused by cleaning activity, splashes, or standing water.
+    - Water flow alone is not enough for CRITICAL because it can be normal sink usage.
+    - CRITICAL is escalated only when measurable flow and FC-37 water contact
+      are both detected at the same time.
+    """
+
+    # Highest-risk condition: combined validation from YF-S201 + FC-37.
     if payload.water_flow == 1 and payload.water_detected == 1:
         return ConditionStatus.CRITICAL
 
+    # FC-37-only water contact is local inspection, not CRITICAL.
     if payload.water_flow == 0 and payload.water_detected == 1:
         return ConditionStatus.LEAK
 
+    # Measurable flow without a nearby person is monitored by duration.
     if (
         payload.water_flow == 1
         and payload.human_present == 0
