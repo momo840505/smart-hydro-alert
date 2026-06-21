@@ -1,176 +1,376 @@
-# Smart Hydro Alert
+<div align="center">
 
-Smart Hydro Alert is an IoT-based water waste and leak detection prototype built for Group 4.
+# 💧 Smart Hydro Alert
 
-The system is designed for **public restroom and shared washroom monitoring**. It receives `0/1` sensor values from an ESP32 or simulator through MQTT, stores readings in MongoDB, applies backend decision logic, sends Telegram maintenance notifications for high-risk states, and displays the current system state through a React dashboard.
+### Real-Time IoT Water Waste and Leak Detection Platform
 
-The current prototype supports:
+A full-stack IoT prototype for monitoring water usage, detecting unattended flow and local water contact, and presenting system risk through a live dashboard and maintenance notifications.
 
-- real-time water flow monitoring
-- human presence detection
-- FC-37 water-contact sensor detection
-- abnormal water usage warning
-- forgotten tap alert
-- local water contact detection
-- combined-sensor critical overflow detection
-- LED output state
-- buzzer output state
-- Telegram maintenance notification
-- dashboard simulation without physical hardware
-- measured water waste estimate for report and demo purposes
-- leak contact time tracking for FC-37-only water-contact cases
+[![Portfolio Project](https://img.shields.io/badge/Portfolio-Project-6C63FF?style=for-the-badge)](https://github.com/momo840505/smart-hydro-alert)
+[![Team Project](https://img.shields.io/badge/University-Team%20Project-0EA5E9?style=for-the-badge)](#project-attribution)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=111827)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-660066?style=for-the-badge&logo=eclipsemosquitto&logoColor=white)](https://mosquitto.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
----
+[Overview](#overview) ·
+[Architecture](#system-architecture) ·
+[Detection Logic](#detection-logic) ·
+[Dashboard](#dashboard) ·
+[Quick Start](#quick-start) ·
+[API](#api-reference) ·
+[My Contributions](#my-contributions)
 
-## Project Use Case
-
-The target scenario is **public restroom and shared washroom monitoring** in places such as universities, shopping centres, airports, office buildings, and other public facilities.
-
-In these environments, maintenance staff cannot continuously monitor every sink or restroom area. Water-related issues may therefore remain unnoticed until a user reports the problem or staff perform manual inspection.
-
-Possible situations include:
-
-- a tap left running after a user leaves
-- water flow while no nearby person is detected
-- local water contact near the basin or floor area
-- possible sink overflow
-- possible local leakage around the monitored water-use area
-- delayed maintenance response to abnormal water conditions
-
-The system is designed to detect these situations early and show the risk level through the React dashboard, LEDs, buzzer, and Telegram notification status.
-
-### Combined Sensor Validation
-
-To reduce false alarms and improve monitoring accuracy, Smart Hydro Alert uses **combined sensor-based detection**.
-
-For example, a wet floor caused by cleaning activity may trigger the FC-37 sensor alone without representing a dangerous overflow condition. Similarly, active water flow alone may simply represent normal sink usage. Therefore, the system uses combined sensor validation before escalating to the `CRITICAL` monitoring state.
-
-This means:
-
-- `FC-37 water contact only` is treated as `LEAK`, which is a local inspection state.
-- `Water flow only` is checked using human presence and duration logic.
-- `CRITICAL` is triggered only when measurable water flow and FC-37 water contact are detected together.
+</div>
 
 ---
 
-## Current Condition States
+## Overview
 
-| Status | Meaning | Remote notification |
-|---|---|---|
-| `NORMAL` | No measurable water flow and no local water contact | No |
-| `NORMAL_FLOW` | Water is flowing while a human is present, so it is treated as normal sink usage | No |
-| `WARNING` | Water is flowing with no human present, but the duration is still below the alert threshold | No |
-| `ALERT` | Water is flowing with no human present for too long, suggesting a forgotten tap risk | Yes |
-| `LEAK` | FC-37 detects local water contact while YF-S201 does not detect measurable flow. This may be cleaning water, spillage, standing water, or a local inspection condition | No |
-| `CRITICAL` | YF-S201 detects measurable flow and FC-37 detects water contact at the same time, indicating a higher-risk overflow condition | Yes |
+**Smart Hydro Alert** is an IoT-based monitoring prototype designed for public restrooms and shared washroom environments.
+
+The system receives binary sensor readings from an ESP32 device or the built-in simulator, publishes them through MQTT, stores event data in MongoDB, applies backend decision logic, and presents the latest condition through a React dashboard.
+
+High-risk conditions can trigger Telegram maintenance notifications, while the dashboard displays expected LED and buzzer responses for each system state.
+
+### The Problem
+
+In public facilities, maintenance staff cannot continuously monitor every sink or washroom area.
+
+A forgotten tap, local water contact, standing water, or an overflow condition may continue unnoticed until somebody reports the problem or staff perform a manual inspection.
+
+### The Solution
+
+Smart Hydro Alert combines multiple sensor signals instead of relying on one sensor reading:
+
+- **YF-S201 flow sensor** identifies measurable water flow.
+- **LD2410C presence sensor** detects whether a person is near the monitored area.
+- **FC-37 water-contact sensor** detects local water near the sink or floor.
+- **Duration logic** distinguishes brief unattended flow from a forgotten tap.
+- **Combined-sensor validation** reduces false alarms before escalating to a critical state.
 
 ---
 
-## Risk Level Mapping
+## Key Features
+
+- 📡 Real-time sensor communication through MQTT
+- 🚰 Water-flow monitoring with the YF-S201 sensor
+- 🚶 Human-presence detection with the LD2410C sensor
+- 💦 Local water-contact detection with the FC-37 sensor
+- ⏱️ Duration-based forgotten-tap detection
+- 🧠 Combined-sensor validation for critical overflow risk
+- 📊 Responsive React monitoring dashboard
+- 🗄️ MongoDB storage for device, sensor and alert history
+- 🔔 Telegram notifications for `ALERT` and `CRITICAL`
+- 💡 LED and buzzer state mapping for local feedback
+- 🧪 Six built-in dashboard simulation scenarios
+- 💧 Estimated measured water waste based on flow rate and duration
+- 🐳 Docker Compose setup for backend infrastructure
+- ✅ Unit tests for payload validation, MQTT topics and alert logic
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    A[ESP32 Sensors<br/>or Simulator] -->|MQTT Payloads| B[Eclipse Mosquitto]
+    B --> C[FastAPI Backend]
+    C --> D[(MongoDB)]
+    C --> E[REST API]
+    C --> F[WebSocket Events]
+    E --> G[React Dashboard]
+    F --> G
+    C --> H[Telegram Bot API]
+    C --> I[Alert History]
+
+    style A fill:#e0f2fe,stroke:#0284c7,color:#0f172a
+    style B fill:#f3e8ff,stroke:#7e22ce,color:#0f172a
+    style C fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+    style D fill:#dcfce7,stroke:#15803d,color:#0f172a
+    style G fill:#fef3c7,stroke:#d97706,color:#0f172a
+    style H fill:#fee2e2,stroke:#dc2626,color:#0f172a
+```
+
+### Data Flow
+
+1. The ESP32 or simulator produces a sensor payload.
+2. The payload is published to the Mosquitto MQTT broker.
+3. FastAPI validates and classifies the incoming condition.
+4. Device state and sensor history are stored in MongoDB.
+5. Alert records are created for notification states.
+6. The React dashboard retrieves live and historical data through REST endpoints.
+7. Telegram messages are sent when notification credentials are configured.
+
+---
+
+## Detection Logic
+
+The backend derives the system state from four main inputs:
+
+```text
+water_flow
+human_present
+water_detected
+running_duration_sec
+```
+
+### Condition States
+
+| Status | Sensor condition | Interpretation | LED | Buzzer | Telegram |
+|---|---|---|---|---|---|
+| `NORMAL` | No flow and no water contact | Area is idle and safe | Green | Off | No |
+| `NORMAL_FLOW` | Flow detected and human present | Normal sink usage | Blue | Off | No |
+| `WARNING` | Flow detected, no human, below threshold | Unattended flow is being monitored | Yellow | Off | No |
+| `ALERT` | Flow detected, no human, threshold reached | Possible forgotten tap | Red | Intermittent | Yes |
+| `LEAK` | Water contact detected without measurable flow | Local water contact requiring inspection | White | Slow beep | No |
+| `CRITICAL` | Flow and water contact detected together | Possible overflow or severe leak | Red flashing | Continuous | Yes |
+
+### Risk Level Mapping
 
 | System state | Risk level | Meaning |
 |---|---|---|
-| `WARNING` | `LOW` | Suspicious unattended water flow, but still below the alert threshold |
-| `ALERT` | `MEDIUM` | Forgotten tap risk after unattended flow reaches the alert threshold |
-| `CRITICAL` | `HIGH` | Measurable water flow and FC-37 water contact are detected together |
+| `WARNING` | `LOW` | Suspicious unattended flow below the alert threshold |
+| `ALERT` | `MEDIUM` | Possible forgotten tap after the duration threshold |
+| `CRITICAL` | `HIGH` | Measurable flow and local water contact detected together |
 
-This mapping avoids confusing messages such as:
+### Why Combined-Sensor Validation Matters
+
+A single sensor can produce an ambiguous result:
+
+- Water flow alone may represent normal sink use.
+- FC-37 water contact alone may be caused by cleaning, splashes or standing water.
+- A person may still be using the sink while water is flowing.
+
+For this reason, the highest-risk state is triggered only when measurable water flow and local water contact are detected together:
 
 ```text
-Status: ALERT
-Severity: LOW
+water_flow = 1
+water_detected = 1
+        ↓
+    CRITICAL
 ```
 
-Instead, the Telegram notification should show:
+This design reduces unnecessary escalation from isolated sensor readings.
 
-```text
-Status: ALERT
-Risk Level: MEDIUM
+---
+
+## Decision Flow
+
+```mermaid
+flowchart TD
+    A[Receive Sensor Payload] --> B{Water contact detected?}
+
+    B -- No --> C{Water flow detected?}
+    B -- Yes --> D{Water flow detected?}
+
+    C -- No --> E[NORMAL]
+    C -- Yes --> F{Human present?}
+
+    F -- Yes --> G[NORMAL_FLOW]
+    F -- No --> H{Duration reached threshold?}
+
+    H -- No --> I[WARNING]
+    H -- Yes --> J[ALERT]
+
+    D -- No --> K[LEAK]
+    D -- Yes --> L[CRITICAL]
+
+    J --> M[Telegram Notification]
+    L --> M
 ```
 
 ---
 
-## Demo Time Logic
+## Demo Timing
 
-For the demo, the backend uses a scaled time rule:
+The standard unattended-flow threshold is configured as:
+
+```text
+300 system seconds
+```
+
+For classroom demonstration, the backend applies a scaled time rule:
 
 ```text
 1 real second = 10 system seconds
 30 real seconds = 300 system seconds
 ```
 
-This means the 300-second abnormal-flow threshold can be demonstrated in about 30 seconds.
-
-This rule applies to both:
-
-```text
-dashboard / backend simulation
-real ESP32 sensor payloads
-```
-
-As long as the backend keeps receiving:
-
-```text
-water_flow = 1
-human_present = 0
-water_detected = 0
-```
-
-the backend will automatically calculate the running duration. After about 30 real seconds, the status changes from:
-
-```text
-WARNING → ALERT
-```
+A continuous unattended-flow condition can therefore transition from `WARNING` to `ALERT` in approximately 30 real seconds.
 
 ---
 
-## LD2410C Demo Configuration
+## Water Waste Estimation
 
-For the classroom demo, the LD2410C presence sensor is configured for very short-range detection.
+The YF-S201 sensor provides an estimated flow rate in litres per minute.
+
+```text
+Measured water waste (L)
+= flow rate (L/min) × duration (seconds) / 60
+```
+
+Example:
+
+```text
+Flow rate = 0.40 L/min
+Duration  = 300 seconds
+
+Measured water waste
+= 0.40 × 300 / 60
+= 2.00 L
+```
+
+The dashboard separates four measurements:
+
+| Dashboard value | Meaning |
+|---|---|
+| `Flow rate` | Current estimated YF-S201 flow rate |
+| `Live measured waste` | Water estimate for the current event |
+| `Total measured waste` | Accumulated measurable waste during the displayed session |
+| `Leak contact time` | Duration of FC-37-only water contact |
+
+> FC-37 can detect water contact but cannot measure water volume. Therefore, `LEAK` contact is recorded as time rather than an unsupported litre estimate.
+
+---
+
+## Dashboard
+
+The React dashboard provides:
+
+- backend online and offline status
+- selected device identification
+- current system condition
+- human-readable risk explanation
+- water-flow sensor value
+- human-presence sensor value
+- FC-37 water-contact value
+- current flow rate
+- running duration
+- expected LED output
+- expected buzzer output
+- notification status
+- live measured water waste
+- accumulated measured water waste
+- leak contact time
+- device event history
+- alert history
+- six simulation controls
+- reset and clear-demo controls
+- raw backend values for technical inspection
+
+### Dashboard Preview
+
+Add your main dashboard screenshot to:
+
+```text
+docs/images/dashboard-preview.png
+```
+
+Then remove the comment marks from the following line:
+
+<!--
+![Smart Hydro Alert Dashboard](docs/images/dashboard-preview.png)
+-->
+
+### Simulation Scenarios
+
+| Scenario | Payload summary | Expected state |
+|---|---|---|
+| Normal | No flow, no person, dry sensor | `NORMAL` |
+| Normal Flow | Flow with a person present | `NORMAL_FLOW` |
+| Warning | Unattended flow below threshold | `WARNING` |
+| Alert | Unattended flow above threshold | `ALERT` |
+| Leak | FC-37 contact without measurable flow | `LEAK` |
+| Critical | Measurable flow and FC-37 contact | `CRITICAL` |
+
+---
+
+## Hardware Configuration
+
+### Prototype Components
+
+- ESP32 microcontroller
+- YF-S201 water-flow sensor
+- LD2410C human-presence radar
+- FC-37 water-contact sensor
+- OLED display
+- green LED
+- blue LED
+- yellow LED
+- white LED
+- red LED
+- buzzer
+
+### LD2410C Demo Configuration
+
+The presence sensor was configured for short-range classroom testing.
 
 | Parameter | Setting | Purpose |
 |---|---|---|
-| Detection accuracy | `0.2 m` | Higher close-range precision |
-| Detection range | `0 m – 0.2 m` | Only detect a person standing very close to the monitored sink area |
-| Unmanned duration | `3 s` | Quickly return to no-human state after the person leaves |
-| Trigger level | `Low level` | Match ESP32 input logic |
-| Photosensitive linkage | `Close` | Disable light-based linkage |
+| Detection accuracy | `0.2 m` | Improve close-range precision |
+| Detection range | `0 m – 0.2 m` | Limit detection to the monitored sink area |
+| Unmanned duration | `3 seconds` | Quickly return to no-human state |
+| Trigger level | `Low level` | Match the ESP32 input logic |
+| Photosensitive linkage | `Disabled` | Avoid light-based triggering |
 
-The range is intentionally limited to reduce false detection from classmates, the teacher, or people standing near the demo area.
+The range is intentionally limited to reduce false detections from people standing near the prototype.
 
 ---
 
-## Classroom Demo Plan
+## Technology Stack
 
-During the presentation, the system will be demonstrated using dashboard simulation.
+### Hardware and Sensors
 
-This is because the real tap and sensor setup is located in a bathroom or practical testing area, so it is not realistic to bring the teacher there during the presentation.
+- ESP32
+- YF-S201
+- LD2410C
+- FC-37
+- OLED
+- LEDs
+- Buzzer
 
-The demo plan is:
+### Backend
 
-1. Use the React dashboard and backend simulation to demonstrate the full system logic.
-2. Show status transitions on the dashboard.
-3. Show changing flow-rate values in the simulation.
-4. Show measured water waste from YF-S201 flow readings.
-5. Show FC-37 leak contact time.
-6. Show Device History and Alert History.
-7. Show Telegram notifications for `ALERT` and `CRITICAL`.
-8. Provide an additional recorded video of the real hardware tap test as supporting evidence.
+- Python 3.11
+- FastAPI
+- Pydantic
+- Beanie ODM
+- Motor async MongoDB driver
+- aiomqtt
+- WebSocket
+- HTTPX
 
-The simulated flow rate is designed to vary between:
+### Frontend
 
-```text
-0.10 L/min → 0.20 L/min → 0.30 L/min → 0.40 L/min
-```
+- React
+- Vite
+- JavaScript
+- CSS
 
-This matches the prototype hardware test where the YF-S201 started detecting water flow at around `0.10 L/min` and reached around `0.40 L/min` at maximum tap flow.
+### Data and Infrastructure
+
+- MongoDB 7
+- Eclipse Mosquitto 2
+- Docker
+- Docker Compose
+
+### Code Quality
+
+- Pytest
+- pytest-asyncio
+- Ruff
+- Black
+- ESLint
 
 ---
 
 ## Project Structure
 
 ```text
-IoT-group4/
+smart-hydro-alert/
 ├── app/
 │   ├── api/
 │   │   ├── alerts.py
@@ -199,6 +399,7 @@ IoT-group4/
 │   └── main.py
 │
 ├── frontend-react/
+│   ├── public/
 │   ├── src/
 │   │   ├── App.jsx
 │   │   ├── App.css
@@ -224,45 +425,175 @@ IoT-group4/
 │   ├── test_payloads.py
 │   └── test_topics.py
 │
-├── README.md
-├── Dockerfile
+├── docs/
+│   └── images/
+│
+├── .env.example
+├── .gitignore
+├── .dockerignore
 ├── docker-compose.yml
+├── Dockerfile
 ├── requirements.txt
 ├── environment.yml
 ├── pyproject.toml
-├── .env.example
-├── .gitignore
-└── .dockerignore
+└── README.md
 ```
 
 ---
 
-## Sensor Payload Format
+## Quick Start
 
-The backend uses `0/1` values for sensor data.
+### Prerequisites
 
-| Field | 0 means | 1 means |
-|---|---|---|
-| `water_flow` | No measurable water flow | Water flow detected |
-| `human_present` | No human detected | Human detected |
-| `water_detected` | FC-37 / water sensor is dry | Water contact detected |
-| `alert` | No user alert required | User alert required |
+Install:
 
-Example payload:
+- Git
+- Docker Desktop
+- Node.js and npm
 
-```json
-{
-  "water_flow": 1,
-  "human_present": 0,
-  "water_detected": 1,
-  "alert": 1,
-  "status": "CRITICAL"
-}
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/momo840505/smart-hydro-alert.git
+cd smart-hydro-alert
 ```
 
-For real MQTT messages from ESP32, the full payload should also include `device_id` and `timestamp`.
+### 2. Create the Environment File
 
-Example MQTT payload:
+#### macOS or Linux
+
+```bash
+cp .env.example .env
+```
+
+#### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Telegram credentials are optional.
+
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+> Never commit your real `.env` file or notification credentials.
+
+### 3. Start the Backend Infrastructure
+
+```bash
+docker compose up -d --build mongo mosquitto backend
+```
+
+Check container status:
+
+```bash
+docker compose ps
+```
+
+Available services:
+
+| Service | URL or port |
+|---|---|
+| FastAPI backend | `http://localhost:8000` |
+| Swagger API documentation | `http://localhost:8000/docs` |
+| Health endpoint | `http://localhost:8000/health` |
+| MongoDB | `localhost:27017` |
+| MQTT broker | `localhost:1883` |
+
+### 4. Start the React Dashboard
+
+Open a second terminal:
+
+```bash
+cd frontend-react
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+### Docker Frontend Option
+
+Build the React application first:
+
+```bash
+cd frontend-react
+npm install
+npm run build
+cd ..
+```
+
+Then start the frontend container:
+
+```bash
+docker compose up -d frontend
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+---
+
+## Using the Dashboard Demo
+
+1. Open `http://localhost:5173`.
+2. Confirm that **Backend Online** is displayed.
+3. Select `device01`.
+4. Click **Clear Demo**.
+5. Run the scenarios in this order:
+
+```text
+NORMAL
+   ↓
+NORMAL_FLOW
+   ↓
+WARNING
+   ↓
+ALERT
+   ↓
+LEAK
+   ↓
+CRITICAL
+```
+
+Observe changes in:
+
+- system status
+- risk level
+- flow rate
+- running duration
+- LED output
+- buzzer output
+- measured water waste
+- leak contact time
+- device history
+- alert history
+- notification status
+
+---
+
+## Sensor Payload
+
+The system uses binary `0/1` values for sensor states.
+
+| Field | `0` | `1` |
+|---|---|---|
+| `water_flow` | No measurable flow | Flow detected |
+| `human_present` | No person detected | Person detected |
+| `water_detected` | FC-37 is dry | Water contact detected |
+| `alert` | No remote alert | Remote alert required |
+
+Example MQTT sensor payload:
 
 ```json
 {
@@ -280,162 +611,9 @@ Example MQTT payload:
 
 ---
 
-## Decision Logic
-
-| Status | Sensor condition | LED output | Buzzer output | Notify user |
-|---|---|---|---|---|
-| `NORMAL` | `water_flow=0`, `water_detected=0` | Green | Off | No |
-| `NORMAL_FLOW` | `water_flow=1`, `human_present=1`, `water_detected=0` | Blue | Off | No |
-| `WARNING` | `water_flow=1`, `human_present=0`, `water_detected=0`, duration below threshold | Yellow | Off | No |
-| `ALERT` | `water_flow=1`, `human_present=0`, `water_detected=0`, duration reaches threshold | Red | Intermittent | Yes |
-| `LEAK` | `water_flow=0`, `water_detected=1` | White | Slow beep | No |
-| `CRITICAL` | `water_flow=1`, `water_detected=1` | Red flashing | Continuous | Yes |
-
-The backend only sends remote notifications for:
-
-```text
-ALERT
-CRITICAL
-```
-
-`LEAK` does not send a remote notification because FC-37-only water contact can be caused by cleaning activity, local spillage, or standing water. It is still shown on the dashboard and recorded as an inspection signal.
-
-`CRITICAL` uses combined sensor validation. It is escalated only when the system detects both measurable water flow and FC-37 water contact at the same time.
-
----
-
-## Flow Rate and Water Estimate Design
-
-The YF-S201 flow sensor provides pulse-based water flow information.
-
-The common calculation is:
-
-```text
-Flow rate (L/min) = pulse frequency / 7.5
-```
-
-For this prototype, the flow rate is used only as an estimate for reporting and dashboard display. It is not used as the main alert trigger.
-
-The prototype tap test showed:
-
-```text
-YF-S201 starts detecting flow at around 0.10 L/min
-Maximum measured tap flow is around 0.40 L/min
-```
-
-Therefore, the main alert logic does not use a fixed flow-rate threshold such as `0.50 L/min`. A fixed `0.50 L/min` threshold may not trigger reliably in this prototype.
-
-The main alert logic uses:
-
-```text
-water_flow
-human_present
-water_detected
-duration
-```
-
----
-
-## Estimated Water Waste
-
-The dashboard shows measured water waste only when YF-S201 detects measurable flow.
-
-Formula:
-
-```text
-Measured water waste (L) = flow_rate_lpm × duration_seconds / 60
-```
-
-Example:
-
-```text
-flow_rate_lpm = 0.40 L/min
-duration = 300 sec = 5 min
-
-Measured water waste = 0.40 × 5 = 2.00 L
-```
-
-The dashboard separates:
-
-| Dashboard value | Meaning |
-|---|---|
-| `Flow rate` | Current YF-S201 estimated flow rate |
-| `Live measured waste` | Current event water waste estimate using live flow rate and running duration |
-| `Total measured waste` | Accumulated measured waste from `WARNING`, `ALERT`, and `CRITICAL` events |
-| `Leak contact time` | How long FC-37 has detected water contact when YF-S201 does not detect measurable flow |
-
----
-
-## Why LEAK is not counted as litres
-
-When the status is:
-
-```text
-LEAK
-water_flow = 0
-water_detected = 1
-```
-
-the FC-37 sensor has detected water contact, but the YF-S201 flow sensor has not detected measurable flow.
-
-This can mean:
-
-- cleaning activity has made the floor or sensor wet
-- a few water drops are on the FC-37 sensor
-- the same water drop remains on the sensor
-- local water is already present near the sink
-- there is a very small leak below the YF-S201 detection range
-- the leak is not passing through the YF-S201 sensor
-
-Because FC-37 can detect water contact but cannot measure flow rate or water volume, the system does not claim an exact litre value for `LEAK`.
-
-Instead, the dashboard records:
-
-```text
-Leak contact time
-```
-
-This is more realistic than pretending that FC-37 can measure water volume.
-
-If `water_flow=1` and `water_detected=1`, the status becomes:
-
-```text
-CRITICAL
-```
-
-In this case, the system can estimate measured water waste using the YF-S201 flow rate.
-
----
-
-## Device History and Alert History
-
-The dashboard uses human-readable history instead of raw backend values.
-
-Device History shows recent sensor events, for example:
-
-```text
-Room returned to normal
-Normal water usage detected
-Unattended water flow detected
-Forgotten tap detected
-Local water contact detected
-Critical overflow risk detected
-```
-
-Alert History shows generated alert events, for example:
-
-```text
-Forgotten tap alert → Notification sent
-Critical overflow alert → Buzzer and notification activated
-```
-
-Raw `0/1` backend values are still available in the technical backend values section.
-
----
-
 ## MQTT Topics
 
-The backend subscribes to these MQTT topic patterns:
+The backend subscribes to:
 
 ```text
 home/+/+/sensor
@@ -443,727 +621,102 @@ home/+/+/alert
 home/+/+/status
 ```
 
-Example sensor topic:
+Examples:
 
 ```text
 home/bathroom/device01/sensor
-```
-
-Example status topic:
-
-```text
+home/bathroom/device01/alert
 home/bathroom/device01/status
 ```
 
-Example alert topic:
-
-```text
-home/bathroom/device01/alert
-```
-
 ---
 
-## API Endpoints
+## API Reference
 
-| Method | Path | Purpose |
+| Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health` | Backend health check |
+| `GET` | `/health` | Check backend health |
+| `GET` | `/api/devices` | List devices and current states |
 | `POST` | `/api/devices/register` | Register or update a device |
-| `GET` | `/api/devices` | List all devices |
-| `GET` | `/api/devices/{device_id}/live` | Get latest live state for one device |
-| `GET` | `/api/devices/{device_id}/history` | Get sensor history |
-| `POST` | `/api/devices/{device_id}/simulate` | Send simulated `0/1` sensor values into the backend |
-| `POST` | `/api/devices/{device_id}/reset?clear_logs=0` | Reset device state to normal |
-| `POST` | `/api/devices/{device_id}/reset?clear_logs=1` | Reset device state and clear demo logs |
-| `GET` | `/api/alerts` | Get alert history |
-| `WS` | `/ws/devices/{device_id}` | Live WebSocket events |
+| `GET` | `/api/devices/{device_id}/live` | Return the latest device state |
+| `GET` | `/api/devices/{device_id}/history` | Return sensor history |
+| `POST` | `/api/devices/{device_id}/simulate` | Submit a simulation payload |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=0` | Reset the device to normal |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=1` | Reset and remove demo logs |
+| `GET` | `/api/alerts` | Return alert history |
+| `WS` | `/ws/devices/{device_id}` | Receive real-time device events |
+
+Interactive API documentation:
+
+```text
+http://localhost:8000/docs
+```
 
 ---
 
-## Prerequisites
+## Testing and Code Quality
 
-| Tool | Purpose |
-|---|---|
-| Docker Desktop | Runs MongoDB, Mosquitto, and backend |
-| Node.js + npm | Runs the React/Vite dashboard locally |
-| Git | Version control |
+### Create a Virtual Environment
 
----
+```bash
+python -m venv .venv
+```
 
-## Quickstart for Demo
+#### Activate on macOS or Linux
 
-The recommended demo setup uses Docker for the backend services and Vite for the React dashboard.
+```bash
+source .venv/bin/activate
+```
 
-### 1. Start backend services
-
-Open PowerShell from the project root:
+#### Activate on Windows PowerShell
 
 ```powershell
-cd C:\Users\momo8\Documents\GitHub\personal-clone\IoT-group4
-docker compose up -d --build mongo mosquitto backend
+.venv\Scripts\Activate.ps1
 ```
 
-Check that the backend services are running:
+### Install Dependencies
 
-```powershell
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```bash
+pip install -r requirements.txt
 ```
 
-Expected containers:
+### Run Backend Tests
 
-```text
-smartwater-mongo
-smartwater-mosquitto
-smartwater-backend
+```bash
+pytest -q
 ```
 
-Backend URLs:
+### Run Python Lint Checks
 
-```text
-Backend API: http://localhost:8000
-Swagger API docs: http://localhost:8000/docs
-Health check: http://localhost:8000/health
+```bash
+ruff check app tests
 ```
 
-### 2. Start React dashboard
+### Check Python Formatting
 
-Open a second PowerShell terminal:
-
-```powershell
-cd C:\Users\momo8\Documents\GitHub\personal-clone\IoT-group4\frontend-react
-npm install
-npm run dev
+```bash
+black --check app tests
 ```
 
-Open the dashboard:
+### Run Frontend Linting
 
-```text
-http://localhost:5173/
-```
-
-This project uses port `5173` for the React dashboard.
-
-If port `5173` is already in use, close the previous Vite terminal or stop the process using that port before running the dashboard again.
-
----
-
-## Dashboard Features
-
-The React dashboard shows:
-
-- backend online/offline state
-- selected device ID
-- current system status
-- flow sensor value
-- human presence value
-- FC-37 / water sensor value
-- running duration
-- LED output
-- buzzer output
-- notify user status
-- live measured water waste
-- total measured water waste
-- leak contact time
-- simulation scenario buttons
-- reset normal button
-- clear demo button
-- human-readable device history
-- human-readable alert history
-- technical backend values
-
-Dashboard status colours:
-
-| Status | Dashboard colour / visual |
-|---|---|
-| `NORMAL` | Green |
-| `NORMAL_FLOW` | Blue |
-| `WARNING` | Yellow |
-| `ALERT` | Red |
-| `LEAK` | White / light blue |
-| `CRITICAL` | Red flashing |
-
----
-
-## Dashboard Testing Steps
-
-### Step 1: Open the dashboard
-
-Open:
-
-```text
-http://localhost:5173/
-```
-
-Check that the dashboard shows:
-
-```text
-Backend Online
-```
-
-### Step 2: Clear previous demo data
-
-Click:
-
-```text
-Clear Demo
-```
-
-Expected result:
-
-```text
-The device state returns to normal.
-Old device history and alert history are cleared.
-```
-
-### Step 3: Test normal restroom condition
-
-Click:
-
-```text
-Normal
-```
-
-Expected result:
-
-```text
-Status: NORMAL
-LED: Green
-Buzzer: Off
-Notify User: No
-Live Measured Waste: 0.00 L
-Total Measured Waste: 0.00 L
-Leak Contact Time: 0s
-```
-
-### Step 4: Test normal water usage
-
-Click:
-
-```text
-Normal Flow
-```
-
-Expected result:
-
-```text
-Status: NORMAL_FLOW
-LED: Blue
-Buzzer: Off
-Notify User: No
-Device History: Normal water usage detected
-```
-
-### Step 5: Test unattended water flow
-
-Click:
-
-```text
-Warning
-```
-
-Expected result:
-
-```text
-Status: WARNING
-LED: Yellow
-Buzzer: Off
-Notify User: No
-Device History: Unattended water flow detected
-Live Measured Waste: calculated from flow rate and duration
-```
-
-### Step 6: Test forgotten tap alert
-
-Click:
-
-```text
-Alert
-```
-
-Expected result:
-
-```text
-Status: ALERT
-Risk Level: MEDIUM
-LED: Red
-Buzzer: Intermittent
-Notify User: Yes
-Device History: Forgotten tap detected
-Alert History: Forgotten tap alert
-Live Measured Waste: calculated from flow rate and duration
-Telegram notification: sent
-```
-
-### Step 7: Test local water contact
-
-Click:
-
-```text
-Leak
-```
-
-Expected result:
-
-```text
-Status: LEAK
-LED: White
-Buzzer: Slow beep
-Notify User: No
-Device History: Local water contact detected
-Leak Contact Time: increases while water contact remains detected
-Measured water waste in litres is not calculated because YF-S201 does not detect measurable flow
-Telegram notification: not sent
-```
-
-### Step 8: Test critical overflow risk
-
-Click:
-
-```text
-Critical
-```
-
-Expected result:
-
-```text
-Status: CRITICAL
-Risk Level: HIGH
-LED: Red flashing
-Buzzer: Continuous
-Notify User: Yes
-Device History: Critical overflow risk detected
-Alert History: Critical overflow alert
-Total Measured Waste: keeps accumulated measured water waste
-Telegram notification: sent
+```bash
+cd frontend-react
+npm run lint
 ```
 
 ---
 
-## Dynamic Demo Test with PowerShell
+## Telegram Notifications
 
-The dashboard buttons are useful for quick testing.
-
-For a more realistic demo, send repeated sensor values through the backend simulation API.
-
-Open a third PowerShell terminal from the project root.
-
-### Why simulation is used in the classroom demo
-
-The physical tap and YF-S201 flow sensor test is located in a bathroom or practical testing area. It is not realistic to bring the teacher to the bathroom during the presentation.
-
-Therefore, the classroom demo uses backend simulation to show the full dashboard behaviour.
-
-A separate real hardware video should be recorded to show:
-
-- actual tap water through YF-S201
-- FC-37 water contact detection
-- LD2410C human presence detection
-- OLED display
-- LEDs
-- buzzer
-- Serial Monitor payload
-- dashboard response
-
-The simulation uses the same `0/1` payload structure as the ESP32 hardware.
-
-### Flow-rate range used in simulation
-
-In the real prototype test:
-
-```text
-YF-S201 starts detecting water flow at around 0.10 L/min
-Maximum measured tap flow is around 0.40 L/min
-```
-
-Therefore, the simulation varies flow rate between:
-
-```text
-0.10 L/min → 0.20 L/min → 0.30 L/min → 0.40 L/min
-```
-
-This makes the demo more realistic than using a fixed value for every sensor message.
-
-### Helper functions
-
-Run this first:
-
-```powershell
-$base = "http://localhost:8000"
-$device = "device01"
-
-function Send-Sensor {
-    param(
-        [int]$Flow,
-        [int]$Human,
-        [int]$Water,
-        [double]$Rate = 0
-    )
-
-    $body = @{
-        water_flow = $Flow
-        human_present = $Human
-        water_detected = $Water
-        alert = 0
-        running_duration_sec = 0
-        flow_rate_lpm = $Rate
-    } | ConvertTo-Json -Compress
-
-    Invoke-RestMethod `
-        -Method Post `
-        -Uri "$base/api/devices/$device/simulate" `
-        -ContentType "application/json" `
-        -Body $body
-}
-
-function Clear-Demo {
-    Invoke-RestMethod `
-        -Method Post `
-        -Uri "$base/api/devices/$device/reset?clear_logs=1"
-}
-
-function Reset-Normal {
-    Invoke-RestMethod `
-        -Method Post `
-        -Uri "$base/api/devices/$device/reset?clear_logs=0"
-}
-
-function Get-DemoFlowRate {
-    param([int]$Step)
-
-    $rates = @(0.10, 0.20, 0.30, 0.40, 0.30, 0.20)
-
-    return $rates[($Step - 1) % $rates.Count]
-}
-```
-
----
-
-### Scenario 1: Normal restroom condition
-
-This shows the restroom monitoring area is safe.
-
-Expected result:
-
-```text
-NORMAL
-Green LED
-Buzzer off
-No notification
-Measured water waste = 0.00 L
-Leak contact time = 0s
-```
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 5; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
----
-
-### Scenario 2: Normal water usage
-
-This shows water is flowing while a person is present.
-
-Expected result:
-
-```text
-NORMAL → NORMAL_FLOW → NORMAL
-Blue LED during normal water usage
-No alert
-No notification
-```
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 8; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 1 0 $rate
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-```
-
----
-
-### Scenario 3: Forgotten tap / unattended water flow
-
-This shows water flowing while no person is present.
-
-Expected result:
-
-```text
-NORMAL → WARNING → ALERT
-Yellow LED during WARNING
-Red LED during ALERT
-Intermittent buzzer during ALERT
-Telegram notification sent
-Live measured waste increases
-Total measured waste increases
-```
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 35; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 0 0 $rate
-    Start-Sleep -Seconds 1
-}
-```
-
----
-
-### Scenario 4: Local water contact only
-
-This shows FC-37 detecting water while YF-S201 does not detect measurable flow.
-
-Expected result:
-
-```text
-NORMAL → LEAK
-White LED
-Slow beep
-No remote notification
-Leak contact time increases
-Measured water waste in litres does not increase
-```
-
-This is because FC-37 can detect water contact but cannot measure flow rate or water volume.
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 15; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-```
-
----
-
-### Scenario 5: Combined-sensor critical overflow risk
-
-This shows water contact first, then measurable flow appears.
-
-Expected result:
-
-```text
-NORMAL → LEAK → CRITICAL
-White LED during LEAK
-Red flashing LED during CRITICAL
-Continuous buzzer during CRITICAL
-Telegram notification sent
-Leak contact time records the FC-37-only period
-Total measured waste increases once YF-S201 detects measurable flow
-```
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    Send-Sensor 0 0 1 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 12; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 0 1 $rate
-    Start-Sleep -Seconds 1
-}
-```
-
----
-
-### Scenario 6: Full demo path
-
-This is the best scenario for the presentation.
-
-Expected result:
-
-```text
-NORMAL → NORMAL_FLOW → WARNING → ALERT → CRITICAL
-Green → Blue → Yellow → Red → Red flashing
-```
-
-```powershell
-Clear-Demo
-
-for ($i = 1; $i -le 3; $i++) {
-    Send-Sensor 0 0 0 0
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 6; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 1 0 $rate
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 35; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 0 0 $rate
-    Start-Sleep -Seconds 1
-}
-
-for ($i = 1; $i -le 10; $i++) {
-    $rate = Get-DemoFlowRate $i
-    Send-Sensor 1 0 1 $rate
-    Start-Sleep -Seconds 1
-}
-```
-
-The full demo path should show:
-
-```text
-Current status changes
-Flow rate changes
-Live measured waste changes
-Total measured waste accumulates
-Leak contact time only changes during FC-37-only LEAK periods
-Device History updates with human-readable events
-Alert History records ALERT and CRITICAL events
-Telegram notifications are sent for ALERT and CRITICAL
-```
-
----
-
-## Manual MQTT Publish
-
-You can manually publish a sensor message through Mosquitto.
-
-Example `NORMAL_FLOW` payload:
-
-```powershell
-$payload = @{
-    device_id = "device01"
-    timestamp = [int][double]::Parse((Get-Date -UFormat %s))
-    water_flow = 1
-    human_present = 1
-    water_detected = 0
-    alert = 0
-    status = "NORMAL_FLOW"
-    running_duration_sec = 0
-    flow_rate_lpm = 0.4
-} | ConvertTo-Json -Compress
-
-docker exec smartwater-mosquitto mosquitto_pub `
-    -h localhost `
-    -t home/bathroom/device01/sensor `
-    -m $payload
-```
-
-Example `CRITICAL` payload:
-
-```powershell
-$payload = @{
-    device_id = "device01"
-    timestamp = [int][double]::Parse((Get-Date -UFormat %s))
-    water_flow = 1
-    human_present = 0
-    water_detected = 1
-    alert = 1
-    status = "CRITICAL"
-    running_duration_sec = 0
-    flow_rate_lpm = 0.4
-} | ConvertTo-Json -Compress
-
-docker exec smartwater-mosquitto mosquitto_pub `
-    -h localhost `
-    -t home/bathroom/device01/sensor `
-    -m $payload
-```
-
----
-
-## Real Hardware Test Evidence
-
-For the final presentation, the dashboard simulation is used for live demonstration.
-
-The real hardware test should be recorded separately as a video.
-
-The video should show:
-
-- ESP32 powered on
-- sensor wiring
-- OLED display
-- YF-S201 connected to tap water
-- FC-37 water detection
-- LD2410C human presence detection
-- Serial Monitor MQTT payload
-- dashboard receiving the sensor values
-- LED and buzzer output
-- Telegram notification for `ALERT` and `CRITICAL`
-
-This supports the claim that the simulation uses the same data format and decision logic as the real hardware prototype.
-
----
-
-## Notification
-
-The backend can send Telegram notifications for:
+Telegram notifications are generated for:
 
 ```text
 ALERT
 CRITICAL
 ```
 
-Do not hard-code notification credentials in `docker-compose.yml`.
-
-Use environment variables instead.
-
-Create a `.env` file from `.env.example`:
-
-```powershell
-copy .env.example .env
-```
-
-Then set:
-
-```text
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-```
-
-Leave them empty if notification is not needed.
-
-Important:
-
-```text
-Do not commit .env to GitHub.
-```
-
-### Telegram Message Design
-
-`ALERT` message example:
+### ALERT Example
 
 ```text
 🚨 Smart Hydro Alert
@@ -1180,7 +733,7 @@ Action:
 Please check whether the tap has been left running.
 ```
 
-`CRITICAL` message example:
+### CRITICAL Example
 
 ```text
 🚨 Smart Hydro Alert
@@ -1201,100 +754,149 @@ Please inspect the sink, tap, and nearby floor area immediately.
 
 ## Useful Docker Commands
 
-```powershell
+### View Running Services
+
+```bash
 docker compose ps
 ```
 
-```powershell
+### Follow Backend Logs
+
+```bash
 docker compose logs -f backend
 ```
 
-```powershell
+### Follow MQTT Broker Logs
+
+```bash
 docker compose logs -f mosquitto
 ```
 
-```powershell
+### Restart the Backend
+
+```bash
 docker compose restart backend
 ```
 
-```powershell
+### Stop the Application
+
+```bash
 docker compose down
 ```
 
-```powershell
+### Stop and Remove Persistent Volumes
+
+```bash
 docker compose down -v
 ```
 
-Open Mongo shell:
+---
 
-```powershell
-docker exec -it smartwater-mongo mongosh smart_water
-```
+## Real Hardware Evidence
 
-Clear demo data manually:
+The dashboard simulator demonstrates the complete backend and frontend workflow.
 
-```powershell
-docker exec -it smartwater-mongo mongosh smart_water --eval "db.sensor_logs.deleteMany({}); db.alerts.deleteMany({}); db.devices.deleteMany({});"
-```
+A separate hardware demonstration can show:
+
+- ESP32 powered on
+- YF-S201 connected to running water
+- FC-37 detecting water contact
+- LD2410C detecting nearby human presence
+- OLED status output
+- LED state changes
+- buzzer behaviour
+- MQTT payloads in the Serial Monitor
+- dashboard responses
+- Telegram notifications for high-risk states
+
+The simulator uses the same sensor payload structure and backend decision logic as the physical prototype.
 
 ---
 
-## Development Commands
+## My Contributions
 
-Run tests:
+This project was developed as a university team project.
 
-```powershell
-pytest -q
-```
+My work focused on the monitoring dashboard, sensor-state logic, simulation workflow, testing and technical documentation.
 
-Run lint:
+### Main Contributions
 
-```powershell
-ruff check app tests
-```
+- designed and implemented the React monitoring dashboard
+- improved dashboard layout, responsiveness and state visualisation
+- added complete binary `0/1` sensor handling
+- implemented six user-facing monitoring states
+- refined combined-sensor validation for `LEAK` and `CRITICAL`
+- improved measured-water-waste calculations and presentation
+- added leak-contact-time tracking
+- refined alert-risk mapping
+- improved Telegram notification behaviour
+- created repeatable classroom simulation scenarios
+- added and updated validation and alert-logic tests
+- expanded technical and demonstration documentation
 
-Format code:
+### Relevant Commits
 
-```powershell
-black app tests
-```
-
-Run React dashboard:
-
-```powershell
-cd frontend-react
-npm install
-npm run dev
-```
-
-Open:
-
-```text
-http://localhost:5173/
-```
+- [`debef3f`](https://github.com/hnguyen-debug/IoT-group4/commit/debef3fd576c04bd4365e5d547bb6f71ef7b2250) — Add full 0/1 sensor logic and demo dashboard
+- [`97875cd`](https://github.com/hnguyen-debug/IoT-group4/commit/97875cd) — Update README and frontend base styles
+- [`5711e8b`](https://github.com/hnguyen-debug/IoT-group4/commit/5711e8b) — Improve dashboard layout and demo workflow
+- [`446f722`](https://github.com/hnguyen-debug/IoT-group4/commit/446f7220bdb6dd206397e96511a7aefd0024a42e) — Refine waste estimates and demo documentation
+- [`989cbcc`](https://github.com/hnguyen-debug/IoT-group4/commit/989cbcc148b8a6dac876341a81eac239347a6df0) — Refine alert logic with combined sensor validation
 
 ---
 
-## Data Flow
+## Limitations
 
-The system data flow is:
+This repository is an academic prototype rather than a production water-management system.
 
-```text
-ESP32 / Simulator
-        ↓
-MQTT Broker
-        ↓
-FastAPI Backend
-        ↓
-MongoDB
-        ↓
-React Dashboard
-        ↓
-LED / Buzzer / Telegram Notification Display
-```
+Current limitations include:
 
-The frontend does not decide the real alert state.
+- rule-based thresholds rather than learned anomaly detection
+- limited calibration under controlled prototype conditions
+- no automatic water shut-off valve
+- no authentication or role-based access control
+- local deployment rather than managed cloud infrastructure
+- one primary demonstration device
+- estimated flow values depend on sensor calibration
+- no long-term field study across multiple facilities
+- no automated maintenance-ticket workflow
+- no formal reliability or safety certification
 
-The backend handles sensor validation, status classification, duration timing, alert creation, and notification logic.
+---
 
-The dashboard displays the backend state clearly for demo and monitoring.
+## Future Improvements
+
+Planned extensions include:
+
+- cloud deployment for remote facility monitoring
+- configurable thresholds for different locations
+- multi-device and multi-building management
+- historical water-usage analytics
+- automated solenoid-valve shut-off
+- flow-sensor calibration tools
+- mobile-friendly maintenance workflows
+- role-based access for facility managers and technicians
+- alert acknowledgement and incident resolution tracking
+- anomaly-detection models after sufficient sensor data is collected
+- sensor and model drift monitoring
+- predictive maintenance for sensor failures
+
+---
+
+## Project Attribution
+
+This repository is a portfolio fork of the original university team project.
+
+- **Portfolio repository:** [momo840505/smart-hydro-alert](https://github.com/momo840505/smart-hydro-alert)
+- **Original team repository:** [hnguyen-debug/IoT-group4](https://github.com/hnguyen-debug/IoT-group4)
+
+The repository preserves the original Git history so that team and individual contributions remain transparent.
+
+---
+
+<div align="center">
+
+### Built to explore how real-time IoT data can support earlier detection of water waste and leak risk.
+
+⭐ If you find this project useful, consider starring the repository.
+
+</div>
