@@ -33,6 +33,8 @@ This repository includes additional documentation for portfolio review and produ
 
 - [Hardware demonstration guide](docs/hardware_demo.md)
 - [Production risk assessment](docs/production_risk_assessment.md)
+- [Incident workflow](docs/incident_workflow.md)
+- [Security controls](docs/security_controls.md)
 
 These notes make the project easier to evaluate in interviews by separating classroom prototype evidence, real-time system design, and production deployment risks.
 
