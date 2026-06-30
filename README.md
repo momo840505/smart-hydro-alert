@@ -27,6 +27,17 @@ A full-stack IoT prototype for monitoring water usage, detecting unattended flow
 
 ---
 
+## Portfolio Engineering Notes
+
+This repository includes additional documentation for portfolio review and production-readiness discussion:
+
+- [Hardware demonstration guide](docs/hardware_demo.md)
+- [Production risk assessment](docs/production_risk_assessment.md)
+
+These notes make the project easier to evaluate in interviews by separating classroom prototype evidence, real-time system design, and production deployment risks.
+
+---
+
 ## Overview
 
 **Smart Hydro Alert** is an IoT-based monitoring prototype designed for public restrooms and shared washroom environments.
