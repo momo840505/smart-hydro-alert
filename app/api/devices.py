@@ -1,8 +1,9 @@
 import time
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.config import get_settings
+from app.core.security import require_admin_api_key
 from app.models.alert import Alert
 from app.models.payloads import (
     DeviceRegisterRequest,
@@ -41,7 +42,19 @@ async def list_devices() -> list[dict]:
     ]
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+# --- Endpoints below this line mutate device state and are protected. ---
+# Read-only endpoints above (list, live, history) stay open; see
+# app/core/security.py for why this project uses an API key instead of a
+# full login system, and docs/security_controls.md for the requirement
+# this satisfies ("Disable public write endpoints in production unless
+# protected.").
+
+
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin_api_key)],
+)
 async def register_device(req: DeviceRegisterRequest) -> dict:
     device = await device_service.register_device(req)
 
@@ -104,7 +117,7 @@ async def get_history(
     ]
 
 
-@router.post("/{device_id}/simulate")
+@router.post("/{device_id}/simulate", dependencies=[Depends(require_admin_api_key)])
 async def simulate_sensor(device_id: str, body: dict) -> dict:
     settings = get_settings()
     now = int(time.time())
@@ -160,7 +173,7 @@ async def simulate_sensor(device_id: str, body: dict) -> dict:
     }
 
 
-@router.post("/{device_id}/reset")
+@router.post("/{device_id}/reset", dependencies=[Depends(require_admin_api_key)])
 async def reset_device(device_id: str, clear_logs: int = Query(default=0, ge=0, le=1)) -> dict:
     device = await device_service.reset_device_to_normal(device_id)
 
