@@ -492,7 +492,25 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
 
-> Never commit your real `.env` file or notification credentials.
+Two more settings worth knowing about:
+
+```env
+# Required outside APP_ENV=development. Protects the device-mutating
+# endpoints (register / simulate / reset). Generate one with:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+ADMIN_API_KEY=
+
+# Comma-separated dashboard origins allowed to call the API. Left at the
+# local-dev defaults below unless you're deploying somewhere else.
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+Local development (`APP_ENV=development`, the default) works with
+`ADMIN_API_KEY` left blank -- the auth check is skipped so the demo and
+test suite run with zero extra setup. Set both a real `APP_ENV` and
+`ADMIN_API_KEY` before deploying anywhere reachable by anyone else.
+
+> Never commit your real `.env` file, notification credentials, or admin API key.
 
 ### 3. Start the Backend Infrastructure
 
@@ -646,18 +664,27 @@ home/bathroom/device01/status
 
 ## API Reference
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/health` | Check backend health |
-| `GET` | `/api/devices` | List devices and current states |
-| `POST` | `/api/devices/register` | Register or update a device |
-| `GET` | `/api/devices/{device_id}/live` | Return the latest device state |
-| `GET` | `/api/devices/{device_id}/history` | Return sensor history |
-| `POST` | `/api/devices/{device_id}/simulate` | Submit a simulation payload |
-| `POST` | `/api/devices/{device_id}/reset?clear_logs=0` | Reset the device to normal |
-| `POST` | `/api/devices/{device_id}/reset?clear_logs=1` | Reset and remove demo logs |
-| `GET` | `/api/alerts` | Return alert history |
-| `WS` | `/ws/devices/{device_id}` | Receive real-time device events |
+| Method | Endpoint | Purpose | Auth required |
+|---|---|---|---|
+| `GET` | `/health` | Check backend health | No |
+| `GET` | `/api/devices` | List devices and current states | No |
+| `POST` | `/api/devices/register` | Register or update a device | **Yes** (`X-API-Key`) |
+| `GET` | `/api/devices/{device_id}/live` | Return the latest device state | No |
+| `GET` | `/api/devices/{device_id}/history` | Return sensor history | No |
+| `POST` | `/api/devices/{device_id}/simulate` | Submit a simulation payload | **Yes** (`X-API-Key`) |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=0` | Reset the device to normal | **Yes** (`X-API-Key`) |
+| `POST` | `/api/devices/{device_id}/reset?clear_logs=1` | Reset and remove demo logs | **Yes** (`X-API-Key`) |
+| `GET` | `/api/alerts` | Return alert history | No |
+| `WS` | `/ws/devices/{device_id}` | Receive real-time device events | No |
+
+The three device-mutating endpoints require an `X-API-Key` header
+matching `ADMIN_API_KEY` in every environment except local development
+(see "2. Create the Environment File" above). Example:
+
+```bash
+curl -X POST http://localhost:8000/api/devices/device01/reset \
+     -H "X-API-Key: $ADMIN_API_KEY"
+```
 
 Interactive API documentation:
 
@@ -866,7 +893,10 @@ Current limitations include:
 - rule-based thresholds rather than learned anomaly detection
 - limited calibration under controlled prototype conditions
 - no automatic water shut-off valve
-- no authentication or role-based access control
+- write endpoints (register/simulate/reset) require a single shared admin
+  API key, not per-user accounts or role-based access control -- there is
+  no login flow, so there is no way to tell operators apart or audit who
+  performed which action
 - local deployment rather than managed cloud infrastructure
 - one primary demonstration device
 - estimated flow values depend on sensor calibration
