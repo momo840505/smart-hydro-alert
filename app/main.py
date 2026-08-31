@@ -47,11 +47,19 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+    # IMPORTANT: allow_origins=["*"] must never be combined with
+    # allow_credentials=True. Starlette's CORSMiddleware reflects the
+    # request's actual Origin header back when the origin list is "*" and
+    # credentials are allowed, which means literally any website could
+    # make credentialed requests to this API from a victim's browser.
+    # Settings.cors_allowed_origins_list is an explicit allowlist instead
+    # (see app/core/config.py) -- add real dashboard origins there via the
+    # CORS_ALLOWED_ORIGINS env var, don't widen this back to "*".
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
