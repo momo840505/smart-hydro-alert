@@ -13,6 +13,7 @@ from app.models.payloads import (
 )
 from app.models.sensor import SensorLog
 from app.services import alert_service, device_service, sensor_service
+from app.services.websocket_manager import ws_manager
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -158,6 +159,29 @@ async def simulate_sensor(device_id: str, body: dict) -> dict:
 
     created_alert = await alert_service.evaluate_sensor(payload, device, settings)
 
+    # /simulate is how this deployment's live demo drives the dashboard (there's no
+    # real ESP32/MQTT broker to push sensor_update events -- see app/mqtt/handlers.py's
+    # _handle_sensor for the MQTT-path equivalent of this same broadcast). Without this,
+    # the WebSocket connection the dashboard opens would sit silent for every scenario
+    # button that doesn't also create a brand-new alert.
+    await ws_manager.broadcast(
+        device_id,
+        {
+            "event": "sensor_update",
+            "data": {
+                "device_id": device_id,
+                "timestamp": payload.timestamp,
+                "water_flow": payload.water_flow,
+                "human_present": payload.human_present,
+                "water_detected": payload.water_detected,
+                "alert": alert_value,
+                "status": condition_status.value,
+                "running_duration_sec": payload.running_duration_sec,
+                "flow_rate_lpm": payload.flow_rate_lpm,
+            },
+        },
+    )
+
     return {
         "ok": 1,
         "device_id": device.device_id,
@@ -185,6 +209,24 @@ async def reset_device(device_id: str, clear_logs: int = Query(default=0, ge=0, 
         alerts = await Alert.find(Alert.device_id == device_id).to_list()
         for alert in alerts:
             await alert.delete()
+
+    await ws_manager.broadcast(
+        device_id,
+        {
+            "event": "sensor_update",
+            "data": {
+                "device_id": device.device_id,
+                "timestamp": int(time.time()),
+                "water_flow": as01(device.water_flow),
+                "human_present": as01(device.human_present),
+                "water_detected": as01(device.water_detected),
+                "alert": as01(device.alert),
+                "status": device.condition_status,
+                "running_duration_sec": device.running_duration_sec or 0,
+                "flow_rate_lpm": device.flow_rate_lpm,
+            },
+        },
+    )
 
     return {
         "ok": 1,

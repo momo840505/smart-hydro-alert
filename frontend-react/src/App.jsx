@@ -588,15 +588,66 @@ function App() {
             void loadDashboard();
         }, 0);
 
+        // Fallback poll. The WebSocket effect below is the primary way updates arrive
+        // (near-instant, pushed by the backend the moment a scenario/reset fires or a
+        // real device publishes over MQTT); this slow interval just re-syncs in case
+        // the socket is down, reconnecting, or a message was dropped.
         const intervalTimer = window.setInterval(() => {
             void loadDashboard();
-        }, 2500);
+        }, 10000);
 
         return () => {
             window.clearTimeout(firstLoadTimer);
             window.clearInterval(intervalTimer);
         };
     }, [loadDashboard]);
+
+    // Live push updates from the backend's /ws/devices/{device_id} endpoint (see
+    // app/api/websocket.py + app/services/websocket_manager.py). Every sensor_update /
+    // alert_created / device_status event the backend broadcasts triggers an immediate
+    // dashboard refresh here instead of waiting for the fallback poll above.
+    useEffect(() => {
+        if (!selectedDevice) {
+            return undefined;
+        }
+
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsOrigin = API_BASE
+            ? API_BASE.replace(/^http/, "ws")
+            : `${wsProtocol}//${window.location.host}`;
+
+        let socket;
+        let reconnectTimer;
+        let closedByEffect = false;
+
+        function connect() {
+            socket = new WebSocket(`${wsOrigin}/ws/devices/${selectedDevice}`);
+
+            socket.onmessage = () => {
+                void loadDashboard();
+            };
+
+            socket.onclose = () => {
+                if (!closedByEffect) {
+                    // Backend restarted or connection dropped -- retry; the fallback
+                    // poll above keeps the dashboard correct in the meantime.
+                    reconnectTimer = window.setTimeout(connect, 3000);
+                }
+            };
+
+            socket.onerror = () => {
+                socket.close();
+            };
+        }
+
+        connect();
+
+        return () => {
+            closedByEffect = true;
+            window.clearTimeout(reconnectTimer);
+            socket?.close();
+        };
+    }, [selectedDevice, loadDashboard]);
 
     const latest = live ?? history?.[0] ?? {};
 
