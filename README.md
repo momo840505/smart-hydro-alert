@@ -14,6 +14,7 @@ A full-stack IoT prototype for monitoring water usage, detecting unattended flow
 [![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-660066?style=for-the-badge&logo=eclipsemosquitto&logoColor=white)](https://mosquitto.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20Dashboard-2EA44F?style=for-the-badge&logo=render&logoColor=white)](https://smart-hydro-alert.onrender.com)
 
 [Overview](#overview) ·
 [Architecture](#system-architecture) ·
