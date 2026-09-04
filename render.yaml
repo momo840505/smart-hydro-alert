@@ -1,0 +1,42 @@
+# Render Blueprint -- lets Render create and configure this web service from one
+# file (New + -> Blueprint on the Render dashboard). Same pattern as
+# career-copilot-agent's render.yaml: `runtime: docker` builds straight from
+# ./Dockerfile, healthCheckPath matches app/main.py's GET /health (no auth, no
+# external calls -- just confirms the service is up).
+#
+# MQTT_HOST/MQTT_PORT are deliberately left unset (falling back to app/core/
+# config.py's "localhost"/1883 defaults): this deployment has no real ESP32
+# hardware or MQTT broker to talk to, and app/mqtt/client.py's subscriber already
+# treats a connection failure as routine -- exponential-backoff retry forever,
+# never crashes the app (see that file). The dashboard's six simulation scenarios
+# call POST /api/devices/{id}/simulate directly, which never touches MQTT at all
+# (see app/api/devices.py), so a real broker isn't needed for the live demo to work.
+services:
+  - type: web
+    runtime: docker
+    name: smart-hydro-alert
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MONGO_DB
+        value: smart_water
+      # sync: false -> Render prompts for these in the dashboard instead of storing
+      # the value in this file (committed to a PUBLIC repo).
+      #
+      # MONGO_URI: paste your MongoDB Atlas connection string here (starts with
+      # mongodb+srv://...), from Atlas's "Connect your application" screen.
+      - key: MONGO_URI
+        sync: false
+      # ADMIN_API_KEY: must be set to the EXACT SAME value as the
+      # VITE_ADMIN_API_KEY build ARG default in ./Dockerfile, or the dashboard's
+      # simulate/reset buttons will get a 401 from the backend. Paste:
+      #   ROTATED-KEY-REDACTED-see-current-Dockerfile-for-the-real-one
+      # (or generate your own with the command in .env.example, and update both
+      # this value and the Dockerfile's default to match).
+      - key: ADMIN_API_KEY
+        sync: false

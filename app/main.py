@@ -1,9 +1,12 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import alerts as alerts_router
 from app.api import devices as devices_router
@@ -70,6 +73,19 @@ def create_app() -> FastAPI:
     app.include_router(devices_router.router)
     app.include_router(alerts_router.router)
     app.include_router(ws_router.router)
+
+    # Serve the built React dashboard, if present. This mount MUST come after every
+    # API router above -- StaticFiles(html=True) mounted at "/" would otherwise
+    # shadow them. FRONTEND_DIST_DIR is unset in local dev / docker-compose (the
+    # separate nginx "frontend" service or `npm run dev` serves the dashboard there
+    # instead) and set to /app/frontend_dist by the Docker image (see ../Dockerfile),
+    # so this mount is a no-op except in the built container. html=True serves
+    # frontend_dist/index.html both for "/" and as the fallback for any unmatched
+    # path, which is what lets the SPA's client-side routing work on refresh.
+    frontend_dist = os.getenv("FRONTEND_DIST_DIR")
+    if frontend_dist and Path(frontend_dist).is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+
     return app
 
 

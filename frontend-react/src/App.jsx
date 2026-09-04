@@ -1,7 +1,23 @@
 ﻿import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 
-const API_BASE = "http://localhost:8000";
+// VITE_API_BASE is baked in at build time (see ../Dockerfile): "" in the deployed
+// container, so every fetch() below resolves against whatever origin the page is
+// served from instead of hardcoding localhost -- unset in local dev, where the
+// fallback below keeps pointing at the docker-compose backend on :8000.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+
+// Single shared admin key for the two state-changing calls below (simulate/reset) --
+// same single-operator, shared-secret model app/core/security.py documents on the
+// backend (X-API-Key header, checked with a timing-safe compare). This is a demo
+// dashboard with one operator and no login flow, so the key living in the built JS
+// bundle is the accepted tradeoff already implicit in that design: it deters casual
+// abuse of the write endpoints, it isn't meant to withstand someone reading the
+// bundle. VITE_ADMIN_API_KEY is baked in at build time (see ../Dockerfile) and must
+// match the backend's ADMIN_API_KEY env var exactly, or every scenario/reset button
+// will fail with a 401 (or a 503 if the backend has no key configured at all in a
+// non-development APP_ENV -- see require_admin_api_key's docstring).
+const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "";
 const DEFAULT_DEVICE_ID = "device01";
 const ALERT_THRESHOLD = 300;
 const TIME_SCALE = 10;
@@ -620,6 +636,7 @@ function App() {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
+                    ...(ADMIN_API_KEY ? { "X-API-Key": ADMIN_API_KEY } : {}),
                 },
                 body: JSON.stringify(scenario.payload),
             });
@@ -646,6 +663,7 @@ function App() {
                 `${API_BASE}/api/devices/${selectedDevice}/reset?clear_logs=${clearLogs ? 1 : 0}`,
                 {
                     method: "POST",
+                    headers: ADMIN_API_KEY ? { "X-API-Key": ADMIN_API_KEY } : {},
                 },
             );
 

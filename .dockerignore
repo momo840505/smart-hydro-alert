@@ -46,3 +46,8 @@ Dockerfile
 .dockerignore
 docker-compose.yml
 docker/
+
+# Frontend build artefacts (rebuilt inside the image's own frontend-build stage --
+# no need to send a stale local copy as part of the build context)
+frontend-react/node_modules/
+frontend-react/dist/
