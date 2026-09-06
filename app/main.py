@@ -14,6 +14,8 @@ from app.api import websocket as ws_router
 from app.core.config import get_settings
 from app.database.mongodb import close_db, init_db
 from app.mqtt.client import run_subscriber
+from app.services import device_service
+from app.services.websocket_manager import ws_manager
 
 
 def _configure_logging(level: str) -> None:
@@ -23,6 +25,34 @@ def _configure_logging(level: str) -> None:
     )
 
 
+async def monitor_device_connections(settings) -> None:
+    log = logging.getLogger("app.device_monitor")
+
+    while True:
+        offline_device_ids = await device_service.mark_stale_devices_offline(
+            settings.device_offline_after_sec
+        )
+
+        for device_id in offline_device_ids:
+            await ws_manager.broadcast(
+                device_id,
+                {
+                    "event": "device_status",
+                    "data": {
+                        "device_id": device_id,
+                        "status": "OFFLINE",
+                    },
+                },
+            )
+
+            log.info(
+                "offline update sent for device %s",
+                device_id,
+            )
+
+        await asyncio.sleep(settings.device_status_check_interval_sec)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -30,18 +60,33 @@ async def lifespan(app: FastAPI):
     log = logging.getLogger("app.lifespan")
 
     await init_db(settings)
-    mqtt_task = asyncio.create_task(run_subscriber(settings), name="mqtt-subscriber")
+
+    mqtt_task = asyncio.create_task(
+        run_subscriber(settings),
+        name="mqtt-subscriber",
+    )
+
+    device_monitor_task = asyncio.create_task(
+        monitor_device_connections(settings),
+        name="device-monitor",
+    )
+
     log.info("backend startup complete")
 
     try:
         yield
     finally:
         log.info("shutting down")
+
         mqtt_task.cancel()
-        try:
-            await mqtt_task
-        except asyncio.CancelledError:
-            pass
+        device_monitor_task.cancel()
+
+        for task in (mqtt_task, device_monitor_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
         close_db()
         log.info("shutdown complete")
 

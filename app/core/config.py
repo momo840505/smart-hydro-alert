@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     timestamp_skew_future_sec: int = 300
     mqtt_max_payload_bytes: int = 512
 
+    device_offline_after_sec: int = 60
+    device_status_check_interval_sec: int = 10
+
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]

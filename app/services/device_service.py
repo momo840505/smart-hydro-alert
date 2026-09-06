@@ -15,6 +15,19 @@ logger = logging.getLogger(__name__)
 TIME_SCALE = 10
 
 
+def is_device_stale(
+    last_seen: int | None,
+    offline_after_sec: int,
+    now: int | None = None,
+) -> bool:
+    if last_seen is None:
+        return True
+
+    current_time = int(time.time()) if now is None else now
+
+    return current_time - last_seen > offline_after_sec
+
+
 async def get_device(device_id: str) -> Device | None:
     return await Device.find_one(Device.device_id == device_id)
 
@@ -134,3 +147,33 @@ async def apply_status(payload: StatusPayload) -> Device:
 
     await device.save()
     return device
+
+
+async def mark_stale_devices_offline(
+    offline_after_sec: int,
+) -> list[str]:
+    devices = await list_devices()
+
+    offline_device_ids: list[str] = []
+
+    for device in devices:
+        if device.status != "ONLINE":
+            continue
+
+        if not is_device_stale(
+            device.last_seen,
+            offline_after_sec,
+        ):
+            continue
+
+        device.status = "OFFLINE"
+        await device.save()
+
+        offline_device_ids.append(device.device_id)
+
+        logger.info(
+            "device marked offline: %s",
+            device.device_id,
+        )
+
+    return offline_device_ids
