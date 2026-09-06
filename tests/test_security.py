@@ -1,17 +1,11 @@
 """
 Tests for app/core/security.py -- the admin API key dependency added to
-fix the CORS + missing-auth issue (see HOW_TO_APPLY_FIXES.md).
+fix the missing-auth issue on device-mutating endpoints.
 
 These call the dependency function directly rather than going through a
 FastAPI TestClient + full app lifespan (which would need a live MongoDB
 and MQTT broker to start up). That mirrors how the rest of this test
 suite already tests service-layer functions directly.
-
-Note: this file was written and reasoned through carefully, but I could
-not execute it in the sandbox this session ran in (fastapi /
-pydantic-settings aren't installed there and the sandbox has no package
-registry access). Please run `pytest tests/test_security.py -v` yourself
-after applying the fix to confirm it passes before you rely on it.
 """
 
 from __future__ import annotations
