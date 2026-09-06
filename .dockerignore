@@ -1,10 +1,10 @@
-# Conda / Python envs
+# Python environments
 .conda/
 .venv/
 venv/
 env/
 
-# Build / cache
+# Python cache
 __pycache__/
 *.py[cod]
 *.so
@@ -15,39 +15,34 @@ htmlcov/
 .tox/
 .nox/
 
-# Source control
+# Git
 .git/
 .gitignore
 .github/
 
-# IDE / OS
+# IDE and OS files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Local env / secrets
+# Local environment files
 .env
 .env.local
 .env.*.local
 
-# Tests (image doesn't need them)
+# Files not needed in the runtime image
 tests/
-
-# Docs
 *.md
-
-# Logs
 *.log
 logs/
 
-# Docker artefacts themselves
+# Docker files
 Dockerfile
 .dockerignore
 docker-compose.yml
 docker/
 
-# Frontend build artefacts (rebuilt inside the image's own frontend-build stage --
-# no need to send a stale local copy as part of the build context)
+# Frontend build output
 frontend-react/node_modules/
 frontend-react/dist/
