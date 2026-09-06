@@ -422,9 +422,6 @@ smart-hydro-alert/
 │   ├── package.json
 │   └── vite.config.js
 │
-├── frontend/
-│   └── index.html
-│
 ├── simulator/
 │   ├── __main__.py
 │   ├── config.py
@@ -437,6 +434,7 @@ smart-hydro-alert/
 ├── tests/
 │   ├── test_alert_logic.py
 │   ├── test_payloads.py
+│   ├── test_security.py
 │   └── test_topics.py
 │
 ├── docs/
