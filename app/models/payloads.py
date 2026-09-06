@@ -34,7 +34,10 @@ class ConditionStatus(StrEnum):
 
 
 class _StrictBase(BaseModel):
-    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="ignore",
+        str_strip_whitespace=True,
+    )
 
 
 class SensorPayload(_StrictBase):
@@ -47,12 +50,27 @@ class SensorPayload(_StrictBase):
     alert: BinaryFlag = 0
 
     status: ConditionStatus | None = None
-    running_duration_sec: int = Field(default=0, ge=0)
-    flow_rate_lpm: float | None = Field(default=None, ge=0)
+    running_duration_sec: int = Field(
+        default=0,
+        ge=0,
+    )
+    flow_rate_lpm: float | None = Field(
+        default=None,
+        ge=0,
+    )
 
-    @field_validator("water_flow", "human_present", "water_detected", "alert", mode="before")
+    @field_validator(
+        "water_flow",
+        "human_present",
+        "water_detected",
+        "alert",
+        mode="before",
+    )
     @classmethod
-    def only_accept_0_or_1(cls, value: object) -> int:
+    def only_accept_0_or_1(
+        cls,
+        value: object,
+    ) -> int:
         if isinstance(value, bool):
             return 1 if value else 0
 
@@ -75,17 +93,28 @@ class StatusPayload(_StrictBase):
     timestamp: int = Field(ge=0)
     status: DeviceStatusEnum
     uptime_sec: int = Field(ge=0)
-    free_heap: int | None = Field(default=None, ge=0)
-    rssi: int | None = Field(default=None, le=0)
+    free_heap: int | None = Field(
+        default=None,
+        ge=0,
+    )
+    rssi: int | None = Field(
+        default=None,
+        le=0,
+    )
     firmware_version: str | None = None
 
 
 class DeviceRegisterRequest(_StrictBase):
     device_id: str = Field(pattern=DEVICE_ID_RE)
-    location: str = Field(min_length=1, max_length=64)
+    location: str = Field(
+        min_length=1,
+        max_length=64,
+    )
 
 
-def compute_strength(duration_sec: int) -> AlertStrength:
+def compute_strength(
+    duration_sec: int,
+) -> AlertStrength:
     if duration_sec >= 1200:
         return AlertStrength.HIGH
 
@@ -95,26 +124,16 @@ def compute_strength(duration_sec: int) -> AlertStrength:
     return AlertStrength.LOW
 
 
-def derive_condition_status(payload: SensorPayload, threshold_sec: int) -> ConditionStatus:
-    """Classify restroom condition using combined sensor validation.
-
-    Design principle:
-    - FC-37 water contact alone is treated as LEAK / local inspection only.
-      It may be caused by cleaning activity, splashes, or standing water.
-    - Water flow alone is not enough for CRITICAL because it can be normal sink usage.
-    - CRITICAL is escalated only when measurable flow and FC-37 water contact
-      are both detected at the same time.
-    """
-
-    # Highest-risk condition: combined validation from YF-S201 + FC-37.
+def derive_condition_status(
+    payload: SensorPayload,
+    threshold_sec: int,
+) -> ConditionStatus:
     if payload.water_flow == 1 and payload.water_detected == 1:
         return ConditionStatus.CRITICAL
 
-    # FC-37-only water contact is local inspection, not CRITICAL.
     if payload.water_flow == 0 and payload.water_detected == 1:
         return ConditionStatus.LEAK
 
-    # Measurable flow without a nearby person is monitored by duration.
     if (
         payload.water_flow == 1
         and payload.human_present == 0
@@ -131,9 +150,16 @@ def derive_condition_status(payload: SensorPayload, threshold_sec: int) -> Condi
     return ConditionStatus.NORMAL
 
 
-def should_notify_user(status: ConditionStatus) -> bool:
-    return status in {ConditionStatus.ALERT, ConditionStatus.CRITICAL}
+def should_notify_user(
+    status: ConditionStatus,
+) -> bool:
+    return status in {
+        ConditionStatus.ALERT,
+        ConditionStatus.CRITICAL,
+    }
 
 
-def expected_alert_value(status: ConditionStatus) -> int:
+def expected_alert_value(
+    status: ConditionStatus,
+) -> int:
     return 1 if should_notify_user(status) else 0

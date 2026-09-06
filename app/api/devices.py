@@ -1,6 +1,12 @@
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
 
 from app.core.config import get_settings
 from app.core.security import require_admin_api_key
@@ -12,10 +18,17 @@ from app.models.payloads import (
     expected_alert_value,
 )
 from app.models.sensor import SensorLog
-from app.services import alert_service, device_service, sensor_service
+from app.services import (
+    alert_service,
+    device_service,
+    sensor_service,
+)
 from app.services.websocket_manager import ws_manager
 
-router = APIRouter(prefix="/api/devices", tags=["devices"])
+router = APIRouter(
+    prefix="/api/devices",
+    tags=["devices"],
+)
 
 
 def as01(value: int | bool | None) -> int:
@@ -43,20 +56,14 @@ async def list_devices() -> list[dict]:
     ]
 
 
-# --- Endpoints below this line mutate device state and are protected. ---
-# Read-only endpoints above (list, live, history) stay open; see
-# app/core/security.py for why this project uses an API key instead of a
-# full login system, and docs/security_controls.md for the requirement
-# this satisfies ("Disable public write endpoints in production unless
-# protected.").
-
-
 @router.post(
     "/register",
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin_api_key)],
 )
-async def register_device(req: DeviceRegisterRequest) -> dict:
+async def register_device(
+    req: DeviceRegisterRequest,
+) -> dict:
     device = await device_service.register_device(req)
 
     return {
@@ -69,11 +76,16 @@ async def register_device(req: DeviceRegisterRequest) -> dict:
 
 
 @router.get("/{device_id}/live")
-async def get_live(device_id: str) -> dict:
+async def get_live(
+    device_id: str,
+) -> dict:
     device = await device_service.get_device(device_id)
 
     if device is None:
-        raise HTTPException(status_code=404, detail="device not found")
+        raise HTTPException(
+            status_code=404,
+            detail="device not found",
+        )
 
     return {
         "device_id": device.device_id,
@@ -84,7 +96,7 @@ async def get_live(device_id: str) -> dict:
         "human_present": as01(device.human_present),
         "water_detected": as01(device.water_detected),
         "alert": as01(device.alert),
-        "running_duration_sec": device.running_duration_sec or 0,
+        "running_duration_sec": (device.running_duration_sec or 0),
         "flow_rate_lpm": device.flow_rate_lpm,
         "last_seen": device.last_seen,
         "uptime_sec": device.uptime_sec,
@@ -97,11 +109,26 @@ async def get_live(device_id: str) -> dict:
 @router.get("/{device_id}/history")
 async def get_history(
     device_id: str,
-    start_time: int | None = Query(default=None, ge=0),
-    end_time: int | None = Query(default=None, ge=0),
-    limit: int = Query(default=100, ge=1, le=1000),
+    start_time: int | None = Query(
+        default=None,
+        ge=0,
+    ),
+    end_time: int | None = Query(
+        default=None,
+        ge=0,
+    ),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+    ),
 ) -> list[dict]:
-    logs = await sensor_service.get_history(device_id, start_time, end_time, limit)
+    logs = await sensor_service.get_history(
+        device_id,
+        start_time,
+        end_time,
+        limit,
+    )
 
     return [
         {
@@ -118,9 +145,16 @@ async def get_history(
     ]
 
 
-@router.post("/{device_id}/simulate", dependencies=[Depends(require_admin_api_key)])
-async def simulate_sensor(device_id: str, body: dict) -> dict:
+@router.post(
+    "/{device_id}/simulate",
+    dependencies=[Depends(require_admin_api_key)],
+)
+async def simulate_sensor(
+    device_id: str,
+    body: dict,
+) -> dict:
     settings = get_settings()
+
     now = int(time.time())
 
     payload_data = {
@@ -157,13 +191,13 @@ async def simulate_sensor(device_id: str, body: dict) -> dict:
         settings.alert_duration_threshold_sec,
     )
 
-    created_alert = await alert_service.evaluate_sensor(payload, device, settings)
+    created_alert = await alert_service.evaluate_sensor(
+        payload,
+        device,
+        settings,
+    )
 
-    # /simulate is how this deployment's live demo drives the dashboard (there's no
-    # real ESP32/MQTT broker to push sensor_update events -- see app/mqtt/handlers.py's
-    # _handle_sensor for the MQTT-path equivalent of this same broadcast). Without this,
-    # the WebSocket connection the dashboard opens would sit silent for every scenario
-    # button that doesn't also create a brand-new alert.
+    # Keep the dashboard in sync with simulated sensor data.
     await ws_manager.broadcast(
         device_id,
         {
@@ -176,7 +210,7 @@ async def simulate_sensor(device_id: str, body: dict) -> dict:
                 "water_detected": payload.water_detected,
                 "alert": alert_value,
                 "status": condition_status.value,
-                "running_duration_sec": payload.running_duration_sec,
+                "running_duration_sec": (payload.running_duration_sec),
                 "flow_rate_lpm": payload.flow_rate_lpm,
             },
         },
@@ -190,23 +224,35 @@ async def simulate_sensor(device_id: str, body: dict) -> dict:
         "human_present": payload.human_present,
         "water_detected": payload.water_detected,
         "alert": alert_value,
-        "running_duration_sec": payload.running_duration_sec,
+        "running_duration_sec": (payload.running_duration_sec),
         "flow_rate_lpm": payload.flow_rate_lpm,
         "created_alert": as01(created_alert is not None),
-        "notified": as01(created_alert.notified) if created_alert is not None else 0,
+        "notified": (as01(created_alert.notified) if created_alert is not None else 0),
     }
 
 
-@router.post("/{device_id}/reset", dependencies=[Depends(require_admin_api_key)])
-async def reset_device(device_id: str, clear_logs: int = Query(default=0, ge=0, le=1)) -> dict:
+@router.post(
+    "/{device_id}/reset",
+    dependencies=[Depends(require_admin_api_key)],
+)
+async def reset_device(
+    device_id: str,
+    clear_logs: int = Query(
+        default=0,
+        ge=0,
+        le=1,
+    ),
+) -> dict:
     device = await device_service.reset_device_to_normal(device_id)
 
     if clear_logs == 1:
         logs = await SensorLog.find(SensorLog.device_id == device_id).to_list()
+
         for log in logs:
             await log.delete()
 
         alerts = await Alert.find(Alert.device_id == device_id).to_list()
+
         for alert in alerts:
             await alert.delete()
 
@@ -222,7 +268,7 @@ async def reset_device(device_id: str, clear_logs: int = Query(default=0, ge=0, 
                 "water_detected": as01(device.water_detected),
                 "alert": as01(device.alert),
                 "status": device.condition_status,
-                "running_duration_sec": device.running_duration_sec or 0,
+                "running_duration_sec": (device.running_duration_sec or 0),
                 "flow_rate_lpm": device.flow_rate_lpm,
             },
         },
@@ -236,6 +282,6 @@ async def reset_device(device_id: str, clear_logs: int = Query(default=0, ge=0, 
         "human_present": as01(device.human_present),
         "water_detected": as01(device.water_detected),
         "alert": as01(device.alert),
-        "running_duration_sec": device.running_duration_sec or 0,
+        "running_duration_sec": (device.running_duration_sec or 0),
         "clear_logs": clear_logs,
     }
