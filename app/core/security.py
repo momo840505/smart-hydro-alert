@@ -56,9 +56,7 @@ def require_admin_api_key(
             detail="ADMIN_API_KEY is not configured for this environment.",
         )
 
-    if provided_key is None or not secrets.compare_digest(
-        provided_key, settings.admin_api_key
-    ):
+    if provided_key is None or not secrets.compare_digest(provided_key, settings.admin_api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing X-API-Key header.",

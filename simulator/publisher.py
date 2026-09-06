@@ -27,7 +27,9 @@ async def mqtt_client(config: SimulatorConfig, client_id: str):
     if config.mqtt_password:
         kwargs["password"] = config.mqtt_password
     async with aiomqtt.Client(**kwargs) as client:
-        logger.info("simulator connected to %s:%d as %s", config.mqtt_host, config.mqtt_port, client_id)
+        logger.info(
+            "simulator connected to %s:%d as %s", config.mqtt_host, config.mqtt_port, client_id
+        )
         yield client
 
 
@@ -54,7 +56,10 @@ async def publish_sensor(
     await client.publish(topic, payload=json.dumps(payload))
     logger.info(
         "sensor -> %s water=%s human=%s running=%ds",
-        device_id, water_flow, human_present, running_duration_sec,
+        device_id,
+        water_flow,
+        human_present,
+        running_duration_sec,
     )
 
 

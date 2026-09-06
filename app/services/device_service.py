@@ -59,11 +59,7 @@ async def _get_or_create(device_id: str) -> Device:
 
 
 def _needs_duration_timer(payload: SensorPayload) -> bool:
-    return (
-        payload.water_flow == 1
-        and payload.human_present == 0
-        and payload.water_detected == 0
-    )
+    return payload.water_flow == 1 and payload.human_present == 0 and payload.water_detected == 0
 
 
 def _calculate_scaled_duration(payload: SensorPayload, device: Device) -> int:

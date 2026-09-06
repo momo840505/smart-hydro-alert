@@ -25,25 +25,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     single.add_argument("--tick", type=float, default=1.0, help="Seconds between sensor messages")
 
     leak = sub.add_parser(
-        "leak", parents=[single],
+        "leak",
+        parents=[single],
         help="Water running, no human -- backend should alert at ~300s",
     )
     leak.add_argument("--duration", type=int, default=360)
 
     normal = sub.add_parser(
-        "normal", parents=[single],
+        "normal",
+        parents=[single],
         help="Random usage with human present -- no alert expected",
     )
     normal.add_argument("--duration", type=int, default=120)
 
     inter = sub.add_parser(
-        "intermittent", parents=[single],
+        "intermittent",
+        parents=[single],
         help="On/off water with human present -- no alert expected",
     )
     inter.add_argument("--duration", type=int, default=180)
 
     multi = sub.add_parser(
-        "multi", help="Run N devices concurrently (device 0 = leak, others = normal)",
+        "multi",
+        help="Run N devices concurrently (device 0 = leak, others = normal)",
     )
     multi.add_argument("--count", type=int, default=3)
     multi.add_argument("--duration", type=int, default=180)

@@ -29,29 +29,44 @@ async def scenario_leak(
     boot = now_epoch()
     async with mqtt_client(config, client_id=f"sim-{device_id}") as client:
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="ONLINE", uptime_sec=0, firmware_version="sim-1.0.0",
+            client,
+            location=location,
+            device_id=device_id,
+            status="ONLINE",
+            uptime_sec=0,
+            firmware_version="sim-1.0.0",
         )
         running = 0
         for _ in range(duration_sec):
             running += 1
             await publish_sensor(
-                client, location=location, device_id=device_id,
-                water_flow=True, human_present=False,
-                running_duration_sec=running, flow_rate_lpm=4.7,
+                client,
+                location=location,
+                device_id=device_id,
+                water_flow=True,
+                human_present=False,
+                running_duration_sec=running,
+                flow_rate_lpm=4.7,
             )
             await asyncio.sleep(tick_sec)
 
         # cool-down: reset condition so duplicate-alert state clears
         for _ in range(3):
             await publish_sensor(
-                client, location=location, device_id=device_id,
-                water_flow=False, human_present=False, running_duration_sec=0,
+                client,
+                location=location,
+                device_id=device_id,
+                water_flow=False,
+                human_present=False,
+                running_duration_sec=0,
             )
             await asyncio.sleep(tick_sec)
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="OFFLINE", uptime_sec=now_epoch() - boot,
+            client,
+            location=location,
+            device_id=device_id,
+            status="OFFLINE",
+            uptime_sec=now_epoch() - boot,
         )
 
 
@@ -67,8 +82,12 @@ async def scenario_normal(
     boot = now_epoch()
     async with mqtt_client(config, client_id=f"sim-{device_id}") as client:
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="ONLINE", uptime_sec=0, firmware_version="sim-1.0.0",
+            client,
+            location=location,
+            device_id=device_id,
+            status="ONLINE",
+            uptime_sec=0,
+            firmware_version="sim-1.0.0",
         )
         running = 0
         for _ in range(duration_sec):
@@ -80,14 +99,21 @@ async def scenario_normal(
                 running = 0
             flow = round(random.uniform(2.0, 8.0), 2) if water else None
             await publish_sensor(
-                client, location=location, device_id=device_id,
-                water_flow=water, human_present=human,
-                running_duration_sec=running, flow_rate_lpm=flow,
+                client,
+                location=location,
+                device_id=device_id,
+                water_flow=water,
+                human_present=human,
+                running_duration_sec=running,
+                flow_rate_lpm=flow,
             )
             await asyncio.sleep(tick_sec)
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="OFFLINE", uptime_sec=now_epoch() - boot,
+            client,
+            location=location,
+            device_id=device_id,
+            status="OFFLINE",
+            uptime_sec=now_epoch() - boot,
         )
 
 
@@ -99,12 +125,18 @@ async def scenario_intermittent(
     tick_sec: float = 1.0,
 ) -> None:
     """Water cycles on/off; human always present. No alert should fire."""
-    logger.info("[intermittent] device=%s duration=%ds tick=%.2fs", device_id, duration_sec, tick_sec)
+    logger.info(
+        "[intermittent] device=%s duration=%ds tick=%.2fs", device_id, duration_sec, tick_sec
+    )
     boot = now_epoch()
     async with mqtt_client(config, client_id=f"sim-{device_id}") as client:
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="ONLINE", uptime_sec=0, firmware_version="sim-1.0.0",
+            client,
+            location=location,
+            device_id=device_id,
+            status="ONLINE",
+            uptime_sec=0,
+            firmware_version="sim-1.0.0",
         )
         for tick in range(duration_sec):
             water = (tick // 15) % 2 == 0
@@ -112,14 +144,21 @@ async def scenario_intermittent(
             running = 0
             flow = round(random.uniform(3.0, 6.0), 2) if water else None
             await publish_sensor(
-                client, location=location, device_id=device_id,
-                water_flow=water, human_present=human,
-                running_duration_sec=running, flow_rate_lpm=flow,
+                client,
+                location=location,
+                device_id=device_id,
+                water_flow=water,
+                human_present=human,
+                running_duration_sec=running,
+                flow_rate_lpm=flow,
             )
             await asyncio.sleep(tick_sec)
         await publish_status(
-            client, location=location, device_id=device_id,
-            status="OFFLINE", uptime_sec=now_epoch() - boot,
+            client,
+            location=location,
+            device_id=device_id,
+            status="OFFLINE",
+            uptime_sec=now_epoch() - boot,
         )
 
 

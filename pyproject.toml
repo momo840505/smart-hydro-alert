@@ -5,7 +5,12 @@ extend-exclude = [".conda"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
-ignore = ["E501"]
+# E501: line length is handled by Black instead.
+# B008: FastAPI's own recommended pattern is `param: T = Depends(...)` in a
+# function signature -- that's a real function call in an argument default,
+# which is exactly what B008 warns about in general, but it's how FastAPI's
+# dependency injection is meant to be used (see app/core/security.py).
+ignore = ["E501", "B008"]
 
 [tool.black]
 line-length = 100

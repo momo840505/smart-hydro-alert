@@ -132,7 +132,10 @@ async def evaluate_sensor(
 
         return alert
 
-    if has_reset(payload, settings.alert_duration_threshold_sec) and device.active_alert_at is not None:
+    if (
+        has_reset(payload, settings.alert_duration_threshold_sec)
+        and device.active_alert_at is not None
+    ):
         device.active_alert_at = None
         device.active_alert_status = None
         await device.save()
@@ -153,10 +156,7 @@ async def ingest_alert_topic(
         else ConditionStatus.ALERT
     )
 
-    if (
-        device.active_alert_at is not None
-        and device.active_alert_status == condition_status.value
-    ):
+    if device.active_alert_at is not None and device.active_alert_status == condition_status.value:
         logger.debug(
             "ignoring ESP32-published alert; already active for device=%s",
             payload.device_id,

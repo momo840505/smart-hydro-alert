@@ -23,10 +23,7 @@ def _format_message(alert: Alert) -> str:
     if alert.alert_type == "CRITICAL":
         risk_level = "HIGH"
         duration_text = "Immediate trigger"
-        reason = (
-            "Measurable water flow and FC-37 water contact were detected "
-            "at the same time."
-        )
+        reason = "Measurable water flow and FC-37 water contact were detected " "at the same time."
         action = "Please inspect the sink, tap, and nearby floor area immediately."
 
     elif alert.alert_type == "ALERT":

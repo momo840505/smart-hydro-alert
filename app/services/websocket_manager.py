@@ -17,7 +17,9 @@ class WebSocketManager:
         await websocket.accept()
         async with self._lock:
             self._connections[device_id].add(websocket)
-        logger.info("ws connected: device_id=%s total=%d", device_id, len(self._connections[device_id]))
+        logger.info(
+            "ws connected: device_id=%s total=%d", device_id, len(self._connections[device_id])
+        )
 
     async def disconnect(self, device_id: str, websocket: WebSocket) -> None:
         async with self._lock:
