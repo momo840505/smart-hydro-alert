@@ -22,6 +22,12 @@ This document defines practical security controls for a production-style IoT mon
 - Never commit `.env`.
 - Rotate notification credentials if leaked.
 - Use separate credentials for development and production.
+- Exception, by design: the live demo's `VITE_ADMIN_API_KEY` / `ADMIN_API_KEY`
+  is a shared deterrent value, not a real secret -- it ships inside the
+  public frontend bundle no matter where it's stored, so it is deliberately
+  documented in the Dockerfile/render.yaml instead of pretending it's hidden.
+  A production deployment with real operators needs per-user auth (see
+  Limitations in the README) rather than this shared-key approach.
 
 ## Data Protection
 

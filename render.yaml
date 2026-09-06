@@ -34,9 +34,11 @@ services:
         sync: false
       # ADMIN_API_KEY: must be set to the EXACT SAME value as the
       # VITE_ADMIN_API_KEY build ARG default in ./Dockerfile, or the dashboard's
-      # simulate/reset buttons will get a 401 from the backend. Paste:
-      #   ROTATED-KEY-REDACTED-see-current-Dockerfile-for-the-real-one
-      # (or generate your own with the command in .env.example, and update both
-      # this value and the Dockerfile's default to match).
+      # simulate/reset buttons will get a 401 from the backend. That value is
+      # documented as non-secret (see the Dockerfile comment) -- it ships in the
+      # public JS bundle either way -- so this is a convenience default, not a
+      # real secret being protected by sync: false. If you rotate it, generate a
+      # new value with the command in .env.example and update both this env var
+      # and the Dockerfile's ARG default to match.
       - key: ADMIN_API_KEY
         sync: false

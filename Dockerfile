@@ -15,17 +15,24 @@ COPY frontend-react/ ./
 ENV VITE_API_BASE=""
 
 # Shared admin key for the dashboard's simulate/reset buttons (X-API-Key header --
-# see app/core/security.py and src/App.jsx's ADMIN_API_KEY constant for the full
-# reasoning: single-operator demo, deters casual abuse, not meant to withstand
-# someone reading the public bundle). Render's Blueprint spec (render.yaml) has no
-# way to pass a build-time argument into a `runtime: docker` service, only runtime
-# env vars -- so this can't come from Render's ADMIN_API_KEY env var the way the
-# backend's copy of it does. Baked in here as a build ARG with a default instead:
-# works out of the box on Render, and can still be overridden locally with
-# `docker build --build-arg VITE_ADMIN_API_KEY=...`. To rotate it, change the
-# default below AND the ADMIN_API_KEY env var on the Render service to the same
-# new value.
-ARG VITE_ADMIN_API_KEY=ROTATED-KEY-REDACTED-see-current-Dockerfile-for-the-real-one
+# see app/core/security.py and src/App.jsx's ADMIN_API_KEY constant). Render's
+# Blueprint spec (render.yaml) has no way to pass a build-time argument into a
+# `runtime: docker` service (confirmed against Render's docs -- there is no
+# buildArgs/dockerBuildArgs field), only runtime env vars, so a default has to
+# live here for the zero-config Render deploy to work at all.
+#
+# IMPORTANT -- this value is NOT a secret and must never be treated as one:
+# it ships inside the built frontend's public JS bundle regardless of where it
+# comes from, so anyone can read it out of the deployed site's devtools whether
+# or not it's also in this file. Its only job is to stop the write endpoints
+# from being wide open to literally anyone with curl; it is not meant to
+# withstand a motivated reader, and a real access-control story (per-user
+# login, RBAC) is listed as a limitation in the README/production risk
+# assessment. Do not reuse this value anywhere it *would* need to be secret
+# (e.g. do not also make it a real user password) -- generate a fresh one with
+# the command in .env.example if you rotate it, and update the ADMIN_API_KEY
+# env var on the Render service to the same new value at the same time.
+ARG VITE_ADMIN_API_KEY=dHljEUAQ1kMe0K_WdZxCWACn-Dyykepu3i7dWIut6BY
 ENV VITE_ADMIN_API_KEY=$VITE_ADMIN_API_KEY
 
 RUN npm run build
