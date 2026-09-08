@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import alerts as alerts_router
+from app.api import demo as demo_router
 from app.api import devices as devices_router
 from app.api import websocket as ws_router
 from app.core.config import get_settings
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(devices_router.router)
+    app.include_router(demo_router.router)
     app.include_router(alerts_router.router)
     app.include_router(ws_router.router)
 

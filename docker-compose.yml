@@ -35,7 +35,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "mosquitto_sub -h localhost -t healthcheck -E -W 2 || exit 0",
+          "mosquitto_pub -h localhost -p 1883 -t healthcheck -m ping >/dev/null 2>&1",
         ]
       interval: 10s
       timeout: 5s
@@ -68,6 +68,8 @@ services:
       DEVICE_STATUS_CHECK_INTERVAL_SEC: "${DEVICE_STATUS_CHECK_INTERVAL_SEC:-10}"
 
       ADMIN_API_KEY: "${ADMIN_API_KEY:-}"
+      DEMO_PUBLIC_ACTIONS_ENABLED: "${DEMO_PUBLIC_ACTIONS_ENABLED:-true}"
+      DEMO_DEVICE_ID: "${DEMO_DEVICE_ID:-device01}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}"
 
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
@@ -81,7 +83,7 @@ services:
       mongo:
         condition: service_healthy
       mosquitto:
-        condition: service_started
+        condition: service_healthy
 
     command:
       [
@@ -117,7 +119,7 @@ services:
       - ./simulator:/app/simulator
     depends_on:
       mosquitto:
-        condition: service_started
+        condition: service_healthy
     entrypoint:
       [
         "python",

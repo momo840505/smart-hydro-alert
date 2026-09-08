@@ -23,3 +23,9 @@ services:
 
       - key: ADMIN_API_KEY
         sync: false
+
+      - key: DEMO_PUBLIC_ACTIONS_ENABLED
+        value: "true"
+
+      - key: DEMO_DEVICE_ID
+        value: device01

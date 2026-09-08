@@ -1,8 +1,7 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
-const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "";
 
 const DEFAULT_DEVICE_ID = "device01";
 const ALERT_THRESHOLD = 300;
@@ -870,22 +869,9 @@ function App() {
 
         try {
             const response = await fetch(
-                `${API_BASE}/api/devices/${selectedDevice}/simulate`,
+                `${API_BASE}/api/demo/devices/${selectedDevice}/scenario/${scenario.key}`,
                 {
                     method: "POST",
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-                        ...(ADMIN_API_KEY
-                            ? {
-                                  "X-API-Key":
-                                      ADMIN_API_KEY,
-                              }
-                            : {}),
-                    },
-                    body: JSON.stringify(
-                        scenario.payload,
-                    ),
                 },
             );
 
@@ -906,29 +892,15 @@ function App() {
             setScenarioBusy("");
         }
     }
-
-    async function resetToNormal({
-        clearLogs = false,
-    } = {}) {
-        setScenarioBusy(
-            clearLogs ? "CLEAR" : "RESET",
-        );
-
+    async function resetToNormal() {
+        setScenarioBusy("RESET");
         setError("");
 
         try {
             const response = await fetch(
-                `${API_BASE}/api/devices/${selectedDevice}/reset?clear_logs=${
-                    clearLogs ? 1 : 0
-                }`,
+                `${API_BASE}/api/demo/devices/${selectedDevice}/reset`,
                 {
                     method: "POST",
-                    headers: ADMIN_API_KEY
-                        ? {
-                              "X-API-Key":
-                                  ADMIN_API_KEY,
-                          }
-                        : {},
                 },
             );
 
@@ -936,11 +908,6 @@ function App() {
                 throw new Error(
                     `Reset failed: ${response.status}`,
                 );
-            }
-
-            if (clearLogs) {
-                setHistory([]);
-                setAlerts([]);
             }
 
             await loadDashboard();
@@ -954,7 +921,6 @@ function App() {
             setScenarioBusy("");
         }
     }
-
     return (
         <main className="dashboard-shell">
             <div className="sunny-background">
@@ -1303,9 +1269,7 @@ function App() {
                         type="button"
                         className="scenario-button scenario-normal"
                         onClick={() =>
-                            resetToNormal({
-                                clearLogs: false,
-                            })
+                            resetToNormal()
                         }
                         disabled={Boolean(
                             scenarioBusy,
@@ -1327,38 +1291,6 @@ function App() {
                         "RESET" ? (
                             <em>
                                 Resetting...
-                            </em>
-                        ) : null}
-                    </button>
-
-                    <button
-                        type="button"
-                        className="scenario-button scenario-normal"
-                        onClick={() =>
-                            resetToNormal({
-                                clearLogs: true,
-                            })
-                        }
-                        disabled={Boolean(
-                            scenarioBusy,
-                        )}
-                    >
-                        <span>
-                            🧹
-                        </span>
-
-                        <strong>
-                            Clear Demo
-                        </strong>
-
-                        <small>
-                            Reset and clear logs
-                        </small>
-
-                        {scenarioBusy ===
-                        "CLEAR" ? (
-                            <em>
-                                Clearing...
                             </em>
                         ) : null}
                     </button>

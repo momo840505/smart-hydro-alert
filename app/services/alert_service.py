@@ -56,6 +56,7 @@ async def _persist_and_dispatch(
     duration_sec: int,
     timestamp: int,
     settings: Settings,
+    send_notification: bool = True,
 ) -> Alert:
     alert = Alert(
         device_id=device_id,
@@ -76,7 +77,9 @@ async def _persist_and_dispatch(
         alert.strength,
     )
 
-    notified = await notification_service.send_alert_notification(alert, settings)
+    notified = False
+    if send_notification:
+        notified = await notification_service.send_alert_notification(alert, settings)
 
     if notified:
         alert.notified = True
@@ -105,6 +108,7 @@ async def evaluate_sensor(
     payload: SensorPayload,
     device: Device,
     settings: Settings,
+    send_notification: bool = True,
 ) -> Alert | None:
     condition_status = derive_condition_status(
         payload,
@@ -124,6 +128,7 @@ async def evaluate_sensor(
             payload.running_duration_sec,
             payload.timestamp,
             settings,
+            send_notification=send_notification,
         )
 
         device.active_alert_at = payload.timestamp

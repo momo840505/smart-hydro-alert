@@ -104,9 +104,10 @@ DEMO_TIME_SCALE=10
 
 So when the dashboard sends repeated unattended-flow demo values, 30 real seconds can represent 300 demo seconds.
 
-This multiplier is passed only by:
+This multiplier is used only for dashboard/admin simulation traffic:
 
 ```text
+POST /api/demo/devices/{device_id}/scenario/{scenario}
 POST /api/devices/{device_id}/simulate
 ```
 
@@ -141,7 +142,7 @@ LEAK
 CRITICAL
 ```
 
-The frontend does not get to choose the final state directly. It sends sensor values, and the backend calculates the state again.
+The public frontend sends only a scenario name. The backend maps that name to a fixed set of demo sensor values and calculates the final state again. The browser never receives the admin API key.
 
 The separate MQTT simulator currently covers:
 
@@ -208,12 +209,14 @@ The backend checks payload size, schema, topic/device ID agreement, and timestam
 | `GET` | `/api/devices` | list devices |
 | `GET` | `/api/devices/{id}/live` | latest device state |
 | `GET` | `/api/devices/{id}/history` | sensor history |
-| `POST` | `/api/devices/{id}/simulate` | send demo sensor values |
-| `POST` | `/api/devices/{id}/reset` | reset demo device |
+| `POST` | `/api/demo/devices/{id}/scenario/{scenario}` | run one fixed public demo scenario |
+| `POST` | `/api/demo/devices/{id}/reset` | reset the configured public demo device |
+| `POST` | `/api/devices/{id}/simulate` | admin-only arbitrary sensor simulation |
+| `POST` | `/api/devices/{id}/reset` | admin-only reset or log clearing |
 | `GET` | `/api/alerts` | alert history |
 | `WS` | `/ws/devices/{id}` | live updates |
 
-State-changing routes use a shared `X-API-Key` outside local development.
+The public demo routes only work for the configured demo device and predefined scenarios. They cannot clear logs and they do not send Telegram notifications. The general state-changing routes still use `X-API-Key` outside local development, and that key stays on the server rather than being built into the React bundle.
 
 ## Run locally
 
@@ -280,7 +283,7 @@ npm run lint
 npm run build
 ```
 
-The backend tests cover sensor-state rules, payload validation, API-key behaviour, MQTT topic handling, device offline detection, and the difference between real-time and accelerated demo timing.
+The backend tests cover sensor-state rules, payload validation, API-key behaviour, the public demo boundary, MQTT topic handling, device offline detection, and the difference between real-time and accelerated demo timing.
 
 GitHub Actions runs backend tests/lint/format checks and the frontend lint/build.
 
@@ -341,7 +344,7 @@ This is a prototype, not a production water-safety system.
 - The physical ESP32 is not part of the hosted demo.
 - Alert thresholds are rules rather than learned behaviour.
 - Real flow sensors need calibration on the actual installation.
-- The hosted dashboard uses one shared demo key instead of user accounts.
+- The public dashboard can change only one configured demo device through predefined scenarios; it is not a user-account system.
 - The local Mosquitto configuration does not use TLS or authentication yet.
 - There is no automatic shut-off valve.
 - I have not run a long-term field test across multiple sites.

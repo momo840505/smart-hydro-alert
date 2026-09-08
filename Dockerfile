@@ -5,14 +5,11 @@ WORKDIR /build/frontend-react
 
 COPY frontend-react/package.json frontend-react/package-lock.json* ./
 
-RUN npm install
+RUN npm ci
 
 COPY frontend-react/ ./
 
 ENV VITE_API_BASE=""
-
-ARG VITE_ADMIN_API_KEY=dHljEUAQ1kMe0K_WdZxCWACn-Dyykepu3i7dWIut6BY
-ENV VITE_ADMIN_API_KEY=$VITE_ADMIN_API_KEY
 
 RUN npm run build
 

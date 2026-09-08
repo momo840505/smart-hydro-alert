@@ -31,6 +31,14 @@ class Settings(BaseSettings):
 
     admin_api_key: str = ""
 
+    demo_public_actions_enabled: bool = False
+    demo_device_id: str = Field(
+        default="device01",
+        pattern=r"^[a-zA-Z0-9_-]{1,32}$",
+    )
+
+    demo_rate_limit_per_minute: int = Field(default=30, ge=1, le=600)
+
     cors_allowed_origins: str = "http://localhost:5173,http://localhost:3000"
 
     telegram_bot_token: str = ""

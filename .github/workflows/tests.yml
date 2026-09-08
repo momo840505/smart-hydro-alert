@@ -34,6 +34,13 @@ jobs:
           python -m pip install ruff black
           python -m pip check
 
+      - name: Check admin key is not bundled into the frontend
+        run: |
+          if grep -R "VITE_ADMIN_API_KEY" Dockerfile frontend-react; then
+            echo "VITE_ADMIN_API_KEY must not be bundled into browser code."
+            exit 1
+          fi
+
       - name: Run backend tests
         run: python -m pytest -q
 

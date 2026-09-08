@@ -75,6 +75,13 @@ async def send_alert_notification(alert: Alert, settings: Settings) -> bool:
         logger.info("telegram notification sent for alert device=%s", alert.device_id)
         return True
 
-    except httpx.HTTPError as error:
-        logger.warning("telegram send failed: %s", error)
+    except httpx.HTTPStatusError as error:
+        logger.warning(
+            "telegram send failed with status=%d",
+            error.response.status_code,
+        )
+        return False
+
+    except httpx.RequestError:
+        logger.warning("telegram request failed")
         return False
