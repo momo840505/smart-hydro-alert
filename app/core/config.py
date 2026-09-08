@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     alert_duration_threshold_sec: int = 300
+    demo_time_scale: int = Field(default=10, ge=1)
 
     timestamp_skew_past_sec: int = 3600
     timestamp_skew_future_sec: int = 300

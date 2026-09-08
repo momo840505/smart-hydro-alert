@@ -12,8 +12,6 @@ from app.models.payloads import (
 
 logger = logging.getLogger(__name__)
 
-TIME_SCALE = 10
-
 
 def is_device_stale(
     last_seen: int | None,
@@ -75,7 +73,20 @@ def _needs_duration_timer(payload: SensorPayload) -> bool:
     return payload.water_flow == 1 and payload.human_present == 0 and payload.water_detected == 0
 
 
-def _calculate_scaled_duration(payload: SensorPayload, device: Device) -> int:
+def _calculate_running_duration(
+    payload: SensorPayload,
+    device: Device,
+    time_scale: int = 1,
+) -> int:
+    """Calculate unattended-flow duration.
+
+    MQTT/device traffic uses the default 1x scale. The REST demo endpoint can
+    pass a larger scale so the UI reaches the five-minute alert threshold
+    without changing how real device messages are handled.
+    """
+    if time_scale < 1:
+        raise ValueError("time_scale must be at least 1")
+
     if not _needs_duration_timer(payload):
         device.abnormal_started_at = None
         return 0
@@ -84,15 +95,23 @@ def _calculate_scaled_duration(payload: SensorPayload, device: Device) -> int:
         device.abnormal_started_at = payload.timestamp
 
     elapsed_real_sec = max(0, payload.timestamp - device.abnormal_started_at)
-    scaled_duration = elapsed_real_sec * TIME_SCALE
+    scaled_duration = elapsed_real_sec * time_scale
 
     return max(payload.running_duration_sec, scaled_duration)
 
 
-async def touch_from_sensor(payload: SensorPayload, threshold_sec: int) -> Device:
+async def touch_from_sensor(
+    payload: SensorPayload,
+    threshold_sec: int,
+    time_scale: int = 1,
+) -> Device:
     device = await _get_or_create(payload.device_id)
 
-    payload.running_duration_sec = _calculate_scaled_duration(payload, device)
+    payload.running_duration_sec = _calculate_running_duration(
+        payload,
+        device,
+        time_scale=time_scale,
+    )
 
     condition_status = derive_condition_status(payload, threshold_sec)
     alert_value = expected_alert_value(condition_status)

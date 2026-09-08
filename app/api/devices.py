@@ -177,6 +177,7 @@ async def simulate_sensor(
     device = await device_service.touch_from_sensor(
         payload,
         settings.alert_duration_threshold_sec,
+        time_scale=settings.demo_time_scale,
     )
 
     condition_status = derive_condition_status(
@@ -197,7 +198,6 @@ async def simulate_sensor(
         settings,
     )
 
-    # Keep the dashboard in sync with simulated sensor data.
     await ws_manager.broadcast(
         device_id,
         {
